@@ -3,45 +3,61 @@ package com.deathbanksentinel;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.google.inject.Provides;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
+import javax.swing.SwingUtilities;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
+import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
+import net.runelite.api.NPC;
+import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.ChatMessage;
+import net.runelite.api.events.GameObjectDespawned;
+import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.HitsplatApplied;
 import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.api.events.NpcDespawned;
+import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
-import net.runelite.api.gameval.ItemID;
+import net.runelite.api.gameval.NpcID;
+import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
-import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.ui.overlay.infobox.InfoBoxManager;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.overlay.OverlayManager;
 
 @Slf4j
 @PluginDescriptor(
@@ -51,7 +67,7 @@ import net.runelite.client.ui.overlay.infobox.InfoBoxManager;
 )
 public class DeathbankSentinelPlugin extends Plugin
 {
-	// Server messages (matched after tag stripping); exact wording re-verified in TESTING.md
+	// Server messages (matched on substring); exact wording re-verified in TESTING.md
 	private static final String MSG_RETRIEVAL_SERVICE = "items stored in an item retrieval service";
 	private static final String MSG_RETRIEVED_SOME = "retrieved some of your items";
 	private static final String MSG_DIED_AGAIN = "You have died again";
@@ -86,8 +102,30 @@ public class DeathbankSentinelPlugin extends Plugin
 		12127, 7512, 7768 // Gauntlet (items never enter)
 	);
 
+	// Retrieval chests known by object ID; the rest are NPCs (below).
+	// TODO from in-game testing: Mimic casket, Sepulchre Mysterious Stranger, Hespori's Arno
+	// Raw IDs where the gameval constant lives in package-private ObjectID1
+	private static final Set<Integer> RETRIEVAL_OBJECT_IDS = Set.of(
+		32656, // TOB_SURFACE_GRAVESTONE_CHEST
+		42854, 42858, // NEX_GRAVESTONE_CHEST (+_NOOP)
+		46078, 46079, // TOA_LOBBY_GRAVESTONE_CHEST (+_NOOP)
+		ObjectID.GARGBOSS_GRAVESTONE_RETRIEVAL
+	);
+	private static final Set<Integer> RETRIEVAL_NPC_IDS = Set.of(
+		NpcID.SNAKEBOSS_PRIEST_1OP, NpcID.SNAKEBOSS_PRIEST_2OPS, // Priestess Zul-Gwenwynig
+		NpcID.TORFINN_RELLEKKA, NpcID.TORFINN_UNGAEL,
+		NpcID.TORFINN_COLLECT_RELLEKKA, NpcID.TORFINN_COLLECT_UNGAEL,
+		NpcID.KAHLITH_ALCHEMICAL_HUNTER, // Orrvor quo Maten (Hydra)
+		NpcID.SHURA, NpcID.SHURA_1OP, NpcID.SHURA_2OP,
+		NpcID.NIGHTMARE_CHALLENGE_SISTER, NpcID.NIGHTMARE_CHALLENGE_SISTER_1OP, NpcID.NIGHTMARE_CHALLENGE_SISTER_2OP,
+		NpcID.FOSSIL_MINEGUARD // Petrified Pete
+	);
+
 	private static final String STATE_KEY = "state";
 	private static final int LOGIN_RECONCILE_TICKS = 25;
+	private static final int DEATH_RESOLVE_MIN_TICKS = 3;
+	private static final int DEATH_RESOLVE_TIMEOUT_TICKS = 50;
+	private static final int DAMAGE_WARNING_DISPLAY_TICKS = 8;
 
 	@Inject
 	private Client client;
@@ -100,21 +138,41 @@ public class DeathbankSentinelPlugin extends Plugin
 	@Inject
 	private ItemManager itemManager;
 	@Inject
-	private InfoBoxManager infoBoxManager;
+	private OverlayManager overlayManager;
+	@Inject
+	private ClientToolbar clientToolbar;
 	@Inject
 	private Notifier notifier;
 	@Inject
 	private DeathbankSentinelConfig config;
+	@Inject
+	private DeathbankIndicatorOverlay indicatorOverlay;
+	@Inject
+	private DeathbankChestOverlay chestOverlay;
+	@Inject
+	private DeathbankWarningOverlay warningOverlay;
 
 	@Getter
 	private DeathbankState state = DeathbankState.inactive(Confidence.UNKNOWN);
+	@Getter
+	private final List<GameObject> retrievalObjects = new ArrayList<>();
+	@Getter
+	private final List<NPC> retrievalNpcs = new ArrayList<>();
 
-	private DeathbankInfoBox infoBox;
-	private boolean infoBoxVisible;
+	private DeathbankPanel panel;
+	private NavigationButton navButton;
+	private BufferedImage indicatorIcon;
 	private boolean retrievalWindowOpen;
 	private boolean graveWindowOpen;
 	private int loginReconcileTicksRemaining = -1;
 	private int lastDamageWarnTick = -1;
+	private int damageWarningUntilTick = -1;
+
+	// A death in IRS content is resolved after respawn by diffing carried items,
+	// so the 3 items kept on death never count as banked
+	private RetrievalService pendingDeathService;
+	private Map<Integer, Integer> pendingDeathSnapshot = Map.of();
+	private int pendingDeathTicks;
 
 	@Provides
 	DeathbankSentinelConfig provideConfig(ConfigManager configManager)
@@ -125,28 +183,63 @@ public class DeathbankSentinelPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
-		infoBox = new DeathbankInfoBox(itemManager.getImage(ItemID.SKULL), this);
+		panel = new DeathbankPanel();
+		navButton = NavigationButton.builder()
+			.tooltip("Deathbank Sentinel")
+			.icon(createPanelIcon())
+			.priority(7)
+			.panel(panel)
+			.build();
+		clientToolbar.addNavigation(navButton);
+		overlayManager.add(indicatorOverlay);
+		overlayManager.add(chestOverlay);
+		overlayManager.add(warningOverlay);
 		loadState();
-		refreshInfoBox();
+		updatePanel();
 	}
 
 	@Override
 	protected void shutDown()
 	{
 		saveState();
-		hideInfoBox();
+		clientToolbar.removeNavigation(navButton);
+		overlayManager.remove(indicatorOverlay);
+		overlayManager.remove(chestOverlay);
+		overlayManager.remove(warningOverlay);
+		retrievalObjects.clear();
+		retrievalNpcs.clear();
 		retrievalWindowOpen = false;
 		graveWindowOpen = false;
 		loginReconcileTicksRemaining = -1;
+		damageWarningUntilTick = -1;
+		clearPendingDeath();
+	}
+
+	boolean isDamageWarningActive()
+	{
+		return client.getTickCount() <= damageWarningUntilTick;
+	}
+
+	BufferedImage getIndicatorIcon()
+	{
+		if (indicatorIcon == null)
+		{
+			indicatorIcon = itemManager.getImage(net.runelite.api.gameval.ItemID.SKULL);
+		}
+		return indicatorIcon;
 	}
 
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged event)
 	{
-		boolean freshLogin = event.getGameState() == GameState.LOGGING_IN;
-		if (freshLogin)
+		if (event.getGameState() == GameState.LOGGING_IN)
 		{
 			loginReconcileTicksRemaining = LOGIN_RECONCILE_TICKS;
+		}
+		if (event.getGameState() == GameState.LOADING)
+		{
+			retrievalObjects.clear();
+			retrievalNpcs.clear();
 		}
 	}
 
@@ -154,17 +247,39 @@ public class DeathbankSentinelPlugin extends Plugin
 	public void onRuneScapeProfileChanged(RuneScapeProfileChanged event)
 	{
 		loadState();
-		refreshInfoBox();
+		updatePanel();
 	}
 
 	@Subscribe
-	public void onConfigChanged(ConfigChanged event)
+	public void onGameObjectSpawned(GameObjectSpawned event)
 	{
-		if (!DeathbankSentinelConfig.GROUP.equals(event.getGroup()))
+		if (!RETRIEVAL_OBJECT_IDS.contains(event.getGameObject().getId()))
 		{
 			return;
 		}
-		refreshInfoBox();
+		retrievalObjects.add(event.getGameObject());
+	}
+
+	@Subscribe
+	public void onGameObjectDespawned(GameObjectDespawned event)
+	{
+		retrievalObjects.remove(event.getGameObject());
+	}
+
+	@Subscribe
+	public void onNpcSpawned(NpcSpawned event)
+	{
+		if (!RETRIEVAL_NPC_IDS.contains(event.getNpc().getId()))
+		{
+			return;
+		}
+		retrievalNpcs.add(event.getNpc());
+	}
+
+	@Subscribe
+	public void onNpcDespawned(NpcDespawned event)
+	{
+		retrievalNpcs.remove(event.getNpc());
 	}
 
 	@Subscribe
@@ -188,7 +303,6 @@ public class DeathbankSentinelPlugin extends Plugin
 		if (confirmsBankWiped)
 		{
 			markInactive(Confidence.VERIFIED);
-			notifier.notify(config.wipeNotification(), "Your deathbank was deleted — you died again before collecting it.");
 		}
 	}
 
@@ -258,19 +372,22 @@ public class DeathbankSentinelPlugin extends Plugin
 			return;
 		}
 
-		Optional<RetrievalService> service = RetrievalService.fromRegion(regionId);
-		if (service.isPresent())
+		// Any unsafe death wipes whatever was already banked
+		if (state.isActive())
 		{
-			markInferredActiveFromDeath(service.get());
+			markInactive(Confidence.INFERRED);
+		}
+
+		Optional<RetrievalService> service = RetrievalService.fromRegion(regionId);
+		if (service.isEmpty())
+		{
 			return;
 		}
 
-		boolean unsafeDeathWipesExistingBank = state.isActive();
-		if (unsafeDeathWipesExistingBank)
-		{
-			markInactive(Confidence.INFERRED);
-			notifier.notify(config.wipeNotification(), "You died — the items in your deathbank were likely deleted.");
-		}
+		pendingDeathService = service.get();
+		pendingDeathSnapshot = countCarriedItems();
+		pendingDeathTicks = 0;
+		log.debug("Death in {} region; will resolve banked items after respawn", pendingDeathService.getDisplayName());
 	}
 
 	@Subscribe
@@ -280,18 +397,19 @@ public class DeathbankSentinelPlugin extends Plugin
 		{
 			return;
 		}
-		if (event.getHitsplat().getAmount() <= 0)
+		if (event.getHitsplat().getAmount() <= 0 || SAFE_DEATH_REGIONS.contains(currentRegionId()))
 		{
 			return;
 		}
 
 		int tick = client.getTickCount();
+		damageWarningUntilTick = tick + DAMAGE_WARNING_DISPLAY_TICKS;
+
 		boolean coolingDown = lastDamageWarnTick != -1 && tick - lastDamageWarnTick < config.damageWarningCooldownTicks();
-		if (coolingDown || SAFE_DEATH_REGIONS.contains(currentRegionId()))
+		if (coolingDown)
 		{
 			return;
 		}
-
 		lastDamageWarnTick = tick;
 		notifier.notify(config.damageNotification(), "You are taking damage with items in a deathbank" + serviceSuffix() + " — get safe!");
 	}
@@ -299,8 +417,59 @@ public class DeathbankSentinelPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
+		tickPendingDeath();
 		tickLoginReconcile();
 		tickZulrahDialog();
+	}
+
+	// --- Post-death resolution: diff carried items before vs after respawn ---
+
+	private void tickPendingDeath()
+	{
+		if (pendingDeathService == null)
+		{
+			return;
+		}
+		pendingDeathTicks++;
+
+		boolean respawned = pendingDeathTicks >= DEATH_RESOLVE_MIN_TICKS
+			&& client.getBoostedSkillLevel(Skill.HITPOINTS) > 0;
+		boolean timedOut = pendingDeathTicks >= DEATH_RESOLVE_TIMEOUT_TICKS;
+		if (!respawned && !timedOut)
+		{
+			return;
+		}
+		resolvePendingDeath();
+	}
+
+	private void resolvePendingDeath()
+	{
+		RetrievalService service = pendingDeathService;
+		Map<Integer, Integer> lost = new HashMap<>(pendingDeathSnapshot);
+		countCarriedItems().forEach((id, kept) -> lost.merge(id, -kept, Integer::sum));
+		clearPendingDeath();
+
+		List<DeathbankState.ItemStack> banked = lost.entrySet().stream()
+			.filter(entry -> entry.getValue() > 0)
+			.map(entry -> new DeathbankState.ItemStack(entry.getKey(), entry.getValue()))
+			.collect(Collectors.toList());
+
+		if (banked.isEmpty())
+		{
+			log.debug("Death at {} resolved: all items kept, no deathbank created", service.getDisplayName());
+			return;
+		}
+
+		log.debug("Death at {} resolved: ~{} stacks banked", service.getDisplayName(), banked.size());
+		state = DeathbankState.active(Confidence.INFERRED, service.getDisplayName(), banked, false);
+		stateChanged();
+	}
+
+	private void clearPendingDeath()
+	{
+		pendingDeathService = null;
+		pendingDeathSnapshot = Map.of();
+		pendingDeathTicks = 0;
 	}
 
 	// --- Login reconciliation: absence of the retrieval warning proves the bank is gone ---
@@ -321,7 +490,7 @@ public class DeathbankSentinelPlugin extends Plugin
 
 	private void reconcileAfterLogin()
 	{
-		if (!config.loginReconciliation() || !state.isActive())
+		if (!state.isActive())
 		{
 			return;
 		}
@@ -430,14 +599,6 @@ public class DeathbankSentinelPlugin extends Plugin
 		stateChanged();
 	}
 
-	private void markInferredActiveFromDeath(RetrievalService service)
-	{
-		List<DeathbankState.ItemStack> carried = snapshotCarriedItems();
-		log.debug("Death in {} region; inferring deathbank with ~{} stacks", service.getDisplayName(), carried.size());
-		state = DeathbankState.active(Confidence.INFERRED, service.getDisplayName(), carried, false);
-		stateChanged();
-	}
-
 	private void markInactive(Confidence confidence)
 	{
 		state = DeathbankState.inactive(confidence);
@@ -454,7 +615,36 @@ public class DeathbankSentinelPlugin extends Plugin
 	private void stateChanged()
 	{
 		saveState();
-		refreshInfoBox();
+		updatePanel();
+	}
+
+	// --- Side panel ---
+
+	private void updatePanel()
+	{
+		DeathbankState snapshot = state;
+		clientThread.invokeLater(() ->
+		{
+			List<DeathbankPanel.PanelItem> items = snapshot.getItems().stream()
+				.map(stack -> new DeathbankPanel.PanelItem(
+					itemManager.getItemComposition(stack.getId()).getName(),
+					stack.getQuantity(),
+					itemManager.getImage(stack.getId(), stack.getQuantity(), stack.getQuantity() > 1)))
+				.collect(Collectors.toList());
+			SwingUtilities.invokeLater(() -> panel.update(snapshot, items));
+		});
+	}
+
+	private static BufferedImage createPanelIcon()
+	{
+		BufferedImage icon = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = icon.createGraphics();
+		g.setColor(new Color(140, 25, 25));
+		g.fillRoundRect(1, 3, 14, 11, 4, 4);
+		g.setColor(new Color(230, 200, 120));
+		g.fillRect(1, 7, 14, 2);
+		g.dispose();
+		return icon;
 	}
 
 	// --- Persistence (per RS profile) ---
@@ -494,55 +684,6 @@ public class DeathbankSentinelPlugin extends Plugin
 		configManager.setRSProfileConfiguration(DeathbankSentinelConfig.GROUP, STATE_KEY, gson.toJson(state));
 	}
 
-	// --- Infobox ---
-
-	private void refreshInfoBox()
-	{
-		boolean shouldShow = config.showInfobox() && state.isActive();
-		if (!shouldShow)
-		{
-			hideInfoBox();
-			return;
-		}
-
-		infoBox.setTooltip(buildTooltip());
-		if (infoBoxVisible)
-		{
-			return;
-		}
-		infoBoxManager.addInfoBox(infoBox);
-		infoBoxVisible = true;
-	}
-
-	private void hideInfoBox()
-	{
-		if (!infoBoxVisible)
-		{
-			return;
-		}
-		infoBoxManager.removeInfoBox(infoBox);
-		infoBoxVisible = false;
-	}
-
-	private String buildTooltip()
-	{
-		String service = state.getServiceName() != null ? state.getServiceName() : "Unknown location";
-		String tier = state.getConfidence().name().toLowerCase();
-		String contents = describeContents();
-		return "Deathbank active: " + service + " (" + tier + ")</br>" + contents
-			+ "</br>Any unsafe death anywhere will delete these items.";
-	}
-
-	private String describeContents()
-	{
-		if (state.getItems().isEmpty())
-		{
-			return "Contents unknown — open the retrieval chest to verify.";
-		}
-		String qualifier = state.isItemsVerified() ? "" : "~";
-		return qualifier + state.getItems().size() + " item stacks inside.";
-	}
-
 	// --- Helpers ---
 
 	private String serviceSuffix()
@@ -559,12 +700,14 @@ public class DeathbankSentinelPlugin extends Plugin
 		return WorldPoint.fromLocalInstance(client, client.getLocalPlayer().getLocalLocation()).getRegionID();
 	}
 
-	private List<DeathbankState.ItemStack> snapshotCarriedItems()
+	private Map<Integer, Integer> countCarriedItems()
 	{
-		return toItemStacks(Stream.of(InventoryID.INV, InventoryID.WORN)
+		return Stream.of(InventoryID.INV, InventoryID.WORN)
 			.map(client::getItemContainer)
 			.filter(Objects::nonNull)
-			.flatMap(container -> Arrays.stream(container.getItems())));
+			.flatMap(container -> Arrays.stream(container.getItems()))
+			.filter(item -> item.getId() != -1 && item.getQuantity() > 0)
+			.collect(Collectors.toMap(Item::getId, Item::getQuantity, Integer::sum, HashMap::new));
 	}
 
 	private static List<DeathbankState.ItemStack> toItemStacks(Stream<Item> items)

@@ -17,22 +17,25 @@ budget test dummy for anything requiring a real death. Check items off per build
 - [ ] **A3 — Reconciliation respects the in-game toggle.** Disable the retrieval
       login warning in OSRS settings (varbit 14194 = 1), log in with saved active
       state. State must NOT clear — it downgrades to *unknown* (orange infobox text).
-- [ ] **A4 — Death creates an inferred bank.** Die at Hespori with junk. Infobox
-      appears immediately: yellow (*inferred*) text, `~N` stack count from the
-      pre-death snapshot.
+- [ ] **A4 — Death creates an inferred bank.** Die at Hespori with junk beyond the
+      3 kept items. Shortly after respawn the red indicator appears: yellow
+      (*inferred*) `~N` count = carried items minus what you kept (post-respawn diff).
+- [ ] **A4b — Kept-items edge case.** Die at an IRS carrying 3 or fewer items
+      (all kept). No bank is created — indicator stays hidden.
 - [ ] **A5 — Safe deaths ignored.** Die in a safe region (NMZ, Clan Wars, CoX) with
-      an active deathbank. No wipe is recorded; infobox unchanged.
+      an active deathbank. No wipe is recorded; indicator unchanged.
 - [ ] **A6 — Unsafe death wipes.** With an active deathbank, die to a gravestone
-      death elsewhere (not at an IRS). Wipe notification fires; infobox clears.
-      Also verify the `You have died again ... lost the items` message path — record
-      its exact wording here.
+      death elsewhere (not at an IRS). Indicator clears (no notification — you
+      already know). Also verify the `You have died again ... lost the items`
+      message path — record its exact wording here.
 
 ## B. Retrieval interface (ground truth)
 
 - [ ] **B1 — Contents verified on open.** Open the retrieval chest (Hespori → Arno).
-      Item count in the infobox switches from `~N` yellow to exact `N` white
-      (*verified*). Debug log prints the window title — **record the title text per
-      service here** (it's how we'll label which bank without region math).
+      Item count in the indicator switches from `~N` yellow to exact `N` white
+      (*verified*), and the side panel item grid matches the chest exactly. Debug
+      log prints the window title — **record the title text per service here**
+      (it's how we'll label which bank without region math).
 - [ ] **B2 — Partial withdrawal tracked.** Take some items out while the window is
       open; count updates live.
 - [ ] **B3 — Emptying clears state.** Withdraw everything; infobox disappears and
@@ -51,16 +54,26 @@ budget test dummy for anything requiring a real death. Check items off per build
 - [ ] **C2 — Priestess confirms empty.** "I don't have anything for you to collect"
       clears an active state.
 
-## D. Damage warning
+## D. Damage warning & visuals
 
-- [ ] **D1 — Fires on damage.** With an active bank, take any hit. Notification
-      fires with the configured flash/sound/focus behavior.
-- [ ] **D2 — Cooldown respected.** Sustained damage warns once per cooldown window
-      (default 50 ticks), not per hit.
+- [ ] **D1 — On-screen text.** With an active bank, take any hit. Big flashing red
+      `DEATHBANK WARNING` appears center-screen for ~5s, refreshing while damage
+      continues.
+- [ ] **D2 — Optional notification cooldown.** Enable the damage notification;
+      sustained damage notifies once per cooldown window (default 50 ticks), while
+      the on-screen text still shows per hit.
 - [ ] **D3 — Silent in safe regions.** Taking damage in NMZ with an active bank
-      does not warn.
-- [ ] **D4 — Force focus works.** Set the notification's request-focus to FORCE,
-      unfocus the client, take damage — the client grabs focus.
+      shows nothing.
+- [ ] **D4 — Red indicator.** The indicator box has a red background and stands out
+      from normal infoboxes; it can be dragged like any overlay.
+- [ ] **D5 — Chest highlight.** With an active bank, the retrieval chest/NPC is
+      outlined red (test at ToB chest north of Ver Sinhaza bank; also Nex, ToA,
+      Grotesque Guardians chest, Zulrah priestess, Torfinn, Shura/Senga, Orrvor,
+      Petrified Pete). Missing IDs (Arno, Mimic casket, Sepulchre stranger) go in
+      the table below.
+- [ ] **D6 — Side panel.** The sidebar chest icon opens the panel: status line,
+      confidence, estimated/verified label, item grid with icons and name+quantity
+      tooltips. Shows "No active deathbank" when inactive.
 
 ## E. Persistence & lifecycle
 

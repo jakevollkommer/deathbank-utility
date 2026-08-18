@@ -1,5 +1,7 @@
 package com.deathbanksentinel;
 
+import java.awt.Color;
+import net.runelite.client.config.Alpha;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
@@ -12,25 +14,59 @@ public interface DeathbankSentinelConfig extends Config
 	String GROUP = "deathbanksentinel";
 
 	@ConfigItem(
-		keyName = "showInfobox",
-		name = "Show infobox",
-		description = "Show an infobox while a deathbank is (or may be) active",
+		keyName = "showIndicator",
+		name = "Show indicator",
+		description = "Show a red indicator box while a deathbank is active",
 		position = 1
 	)
-	default boolean showInfobox()
+	default boolean showIndicator()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "highlightRetrievalPoints",
+		name = "Highlight retrieval chests",
+		description = "Outline retrieval chests and NPCs while your deathbank is active",
+		position = 2
+	)
+	default boolean highlightRetrievalPoints()
+	{
+		return true;
+	}
+
+	@Alpha
+	@ConfigItem(
+		keyName = "highlightColor",
+		name = "Highlight color",
+		description = "Outline color for retrieval chests and NPCs holding your items",
+		position = 3
+	)
+	default Color highlightColor()
+	{
+		return new Color(255, 30, 30, 200);
+	}
+
+	@ConfigItem(
+		keyName = "showDamageText",
+		name = "On-screen damage warning",
+		description = "Flash DEATHBANK WARNING on screen when you take damage with an active deathbank",
+		position = 4
+	)
+	default boolean showDamageText()
 	{
 		return true;
 	}
 
 	@ConfigItem(
 		keyName = "damageNotification",
-		name = "Warn on damage taken",
-		description = "Notify when you take damage while a deathbank is active — configure flash, sound, and focus request here",
-		position = 2
+		name = "Damage notification",
+		description = "Additional notification (sound, tray, focus request) when taking damage with an active deathbank",
+		position = 5
 	)
 	default Notification damageNotification()
 	{
-		return Notification.ON;
+		return Notification.OFF;
 	}
 
 	@Range(min = 5, max = 500)
@@ -38,32 +74,10 @@ public interface DeathbankSentinelConfig extends Config
 		keyName = "damageWarningCooldown",
 		name = "Damage warning cooldown",
 		description = "Minimum game ticks between damage warnings (100 ticks = 1 minute)",
-		position = 3
+		position = 6
 	)
 	default int damageWarningCooldownTicks()
 	{
 		return 50;
-	}
-
-	@ConfigItem(
-		keyName = "wipeNotification",
-		name = "Warn on suspected wipe",
-		description = "Notify when the plugin believes your deathbank was just deleted by an unsafe death",
-		position = 4
-	)
-	default Notification wipeNotification()
-	{
-		return Notification.ON;
-	}
-
-	@ConfigItem(
-		keyName = "loginReconciliation",
-		name = "Reconcile at login",
-		description = "If the game's item-retrieval login warning is enabled and does not appear, clear a stale saved deathbank",
-		position = 5
-	)
-	default boolean loginReconciliation()
-	{
-		return true;
 	}
 }
