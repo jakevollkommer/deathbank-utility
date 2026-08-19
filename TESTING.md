@@ -69,8 +69,8 @@ budget test dummy for anything requiring a real death. Check items off per build
 - [ ] **D5 — Chest highlight.** With an active bank, the retrieval chest/NPC is
       outlined red (test at ToB chest north of Ver Sinhaza bank; also Nex, ToA,
       Grotesque Guardians chest, Zulrah priestess, Torfinn, Shura/Senga, Orrvor,
-      Petrified Pete). Missing IDs (Arno, Mimic casket, Sepulchre stranger) go in
-      the table below.
+      Petrified Pete, Arno, Sepulchre stranger, Mimic casket). All 13 services
+      now have IDs — verify each highlights and note any that don't.
 - [ ] **D6 — Side panel.** The sidebar chest icon opens the panel: status line,
       confidence, estimated/verified label, item grid with icons and name+quantity
       tooltips. Shows "No active deathbank" when inactive.
