@@ -1,4 +1,4 @@
-package com.deathbanksentinel;
+package com.deathbankutility;
 
 import java.awt.Color;
 import java.awt.Dimension;
@@ -27,11 +27,11 @@ class DeathbankIndicatorOverlay extends Overlay
 	private static final int LABEL_HEIGHT = 14;
 	private static final int MAX_LABEL_CHARS = 10;
 
-	private final DeathbankSentinelPlugin plugin;
-	private final DeathbankSentinelConfig config;
+	private final DeathbankUtilityPlugin plugin;
+	private final DeathbankUtilityConfig config;
 
 	@Inject
-	DeathbankIndicatorOverlay(DeathbankSentinelPlugin plugin, DeathbankSentinelConfig config)
+	DeathbankIndicatorOverlay(DeathbankUtilityPlugin plugin, DeathbankUtilityConfig config)
 	{
 		this.plugin = plugin;
 		this.config = config;

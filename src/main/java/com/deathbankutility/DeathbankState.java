@@ -1,4 +1,4 @@
-package com.deathbanksentinel;
+package com.deathbankutility;
 
 import java.util.List;
 import lombok.AllArgsConstructor;

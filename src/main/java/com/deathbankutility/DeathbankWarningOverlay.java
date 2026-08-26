@@ -1,4 +1,4 @@
-package com.deathbanksentinel;
+package com.deathbankutility;
 
 import java.awt.Color;
 import java.awt.Dimension;
@@ -25,11 +25,11 @@ class DeathbankWarningOverlay extends Overlay
 	private static final int FLASH_CYCLE_CLIENT_TICKS = 20;
 
 	private final Client client;
-	private final DeathbankSentinelPlugin plugin;
-	private final DeathbankSentinelConfig config;
+	private final DeathbankUtilityPlugin plugin;
+	private final DeathbankUtilityConfig config;
 
 	@Inject
-	DeathbankWarningOverlay(Client client, DeathbankSentinelPlugin plugin, DeathbankSentinelConfig config)
+	DeathbankWarningOverlay(Client client, DeathbankUtilityPlugin plugin, DeathbankUtilityConfig config)
 	{
 		this.client = client;
 		this.plugin = plugin;

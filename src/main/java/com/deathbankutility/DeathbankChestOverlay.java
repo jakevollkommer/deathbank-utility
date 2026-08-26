@@ -1,4 +1,4 @@
-package com.deathbanksentinel;
+package com.deathbankutility;
 
 import java.awt.Color;
 import java.awt.Dimension;
@@ -26,12 +26,12 @@ class DeathbankChestOverlay extends Overlay
 	private static final int OBJECT_LABEL_Z_OFFSET = 130;
 	private static final int NPC_LABEL_Z_OFFSET = 40;
 
-	private final DeathbankSentinelPlugin plugin;
-	private final DeathbankSentinelConfig config;
+	private final DeathbankUtilityPlugin plugin;
+	private final DeathbankUtilityConfig config;
 	private final ModelOutlineRenderer modelOutlineRenderer;
 
 	@Inject
-	DeathbankChestOverlay(DeathbankSentinelPlugin plugin, DeathbankSentinelConfig config, ModelOutlineRenderer modelOutlineRenderer)
+	DeathbankChestOverlay(DeathbankUtilityPlugin plugin, DeathbankUtilityConfig config, ModelOutlineRenderer modelOutlineRenderer)
 	{
 		this.plugin = plugin;
 		this.config = config;

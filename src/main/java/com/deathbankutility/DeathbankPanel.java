@@ -1,4 +1,4 @@
-package com.deathbanksentinel;
+package com.deathbankutility;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;

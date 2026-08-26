@@ -26,7 +26,7 @@ dependencies {
 	testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
 }
 
-group = 'com.deathbanksentinel'
+group = 'com.deathbankutility'
 version = '0.1.0'
 
 tasks.withType(JavaCompile).configureEach {
@@ -38,7 +38,7 @@ tasks.register('runPlugin', JavaExec) {
 	group = 'application'
 	description = 'Run RuneLite with the plugin loaded'
 	classpath = sourceSets.test.runtimeClasspath
-	mainClass = 'com.deathbanksentinel.PluginLauncher'
+	mainClass = 'com.deathbankutility.PluginLauncher'
 	jvmArgs = [
 		'-ea',
 		'--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED',

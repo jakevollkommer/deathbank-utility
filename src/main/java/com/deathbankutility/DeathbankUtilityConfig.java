@@ -1,4 +1,4 @@
-package com.deathbanksentinel;
+package com.deathbankutility;
 
 import java.awt.Color;
 import net.runelite.client.config.Alpha;
@@ -9,10 +9,10 @@ import net.runelite.client.config.ConfigSection;
 import net.runelite.client.config.Notification;
 import net.runelite.client.config.Range;
 
-@ConfigGroup(DeathbankSentinelConfig.GROUP)
-public interface DeathbankSentinelConfig extends Config
+@ConfigGroup(DeathbankUtilityConfig.GROUP)
+public interface DeathbankUtilityConfig extends Config
 {
-	String GROUP = "deathbanksentinel";
+	String GROUP = "deathbankutility";
 
 	@ConfigItem(
 		keyName = "showIndicator",

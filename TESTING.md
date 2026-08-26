@@ -1,4 +1,4 @@
-# Deathbank Sentinel — dev client testing criteria
+# Deathbank Utility — dev client testing criteria
 
 Run via `./gradlew runPlugin` (developer mode). Hespori (25k fee, Farming Guild) is the
 budget test dummy for anything requiring a real death. Check items off per build.

@@ -1,4 +1,4 @@
-package com.deathbanksentinel;
+package com.deathbankutility;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
@@ -63,11 +63,11 @@ import net.runelite.client.util.LinkBrowser;
 
 @Slf4j
 @PluginDescriptor(
-	name = "Deathbank Sentinel",
+	name = "Deathbank Utility",
 	description = "Tracks item retrieval services (deathbanks) and warns before you lose what's inside",
 	tags = {"jake", "death", "deathbank", "bank", "item", "items", "retrieval", "service", "warning", "zulrah", "vorkath", "nex", "tob", "toa", "uim"}
 )
-public class DeathbankSentinelPlugin extends Plugin
+public class DeathbankUtilityPlugin extends Plugin
 {
 	// Server messages (matched on substring); exact wording re-verified in TESTING.md
 	private static final String MSG_RETRIEVAL_SERVICE = "items stored in an item retrieval service";
@@ -150,7 +150,7 @@ public class DeathbankSentinelPlugin extends Plugin
 	@Inject
 	private Notifier notifier;
 	@Inject
-	private DeathbankSentinelConfig config;
+	private DeathbankUtilityConfig config;
 	@Inject
 	private DeathbankIndicatorOverlay indicatorOverlay;
 	@Inject
@@ -181,9 +181,9 @@ public class DeathbankSentinelPlugin extends Plugin
 	private int pendingDeathTicks;
 
 	@Provides
-	DeathbankSentinelConfig provideConfig(ConfigManager configManager)
+	DeathbankUtilityConfig provideConfig(ConfigManager configManager)
 	{
-		return configManager.getConfig(DeathbankSentinelConfig.class);
+		return configManager.getConfig(DeathbankUtilityConfig.class);
 	}
 
 	@Override
@@ -191,7 +191,7 @@ public class DeathbankSentinelPlugin extends Plugin
 	{
 		panel = new DeathbankPanel();
 		navButton = NavigationButton.builder()
-			.tooltip("Deathbank Sentinel")
+			.tooltip("Deathbank Utility")
 			.icon(createPanelIcon())
 			.priority(7)
 			.panel(panel)
@@ -261,14 +261,14 @@ public class DeathbankSentinelPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (!DeathbankSentinelConfig.GROUP.equals(event.getGroup()) || event.getNewValue() == null)
+		if (!DeathbankUtilityConfig.GROUP.equals(event.getGroup()) || event.getNewValue() == null)
 		{
 			return;
 		}
 
 		if ("suggestButton".equals(event.getKey()))
 		{
-			LinkBrowser.browse("https://github.com/jakevollkommer/deathbank-sentinel/issues");
+			LinkBrowser.browse("https://github.com/jakevollkommer/deathbank-utility/issues");
 			return;
 		}
 
@@ -679,7 +679,7 @@ public class DeathbankSentinelPlugin extends Plugin
 
 	private void loadState()
 	{
-		String json = configManager.getRSProfileConfiguration(DeathbankSentinelConfig.GROUP, STATE_KEY);
+		String json = configManager.getRSProfileConfiguration(DeathbankUtilityConfig.GROUP, STATE_KEY);
 		state = parseState(json);
 		// A previous session's certainty is not this session's certainty
 		boolean staleClaim = state.isActive() && state.getConfidence() == Confidence.VERIFIED;
@@ -709,7 +709,7 @@ public class DeathbankSentinelPlugin extends Plugin
 
 	private void saveState()
 	{
-		configManager.setRSProfileConfiguration(DeathbankSentinelConfig.GROUP, STATE_KEY, gson.toJson(state));
+		configManager.setRSProfileConfiguration(DeathbankUtilityConfig.GROUP, STATE_KEY, gson.toJson(state));
 	}
 
 	// --- Helpers ---

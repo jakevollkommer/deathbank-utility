@@ -1,4 +1,4 @@
-# Deathbank Sentinel
+# Deathbank Utility
 
 RuneLite plugin that tracks OSRS item retrieval services (deathbanks — Zulrah, Vorkath,
 Nex, ToB, ToA, Hydra, and friends) and gets loud before you lose what's inside.

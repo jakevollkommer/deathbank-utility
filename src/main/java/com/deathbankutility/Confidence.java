@@ -1,4 +1,4 @@
-package com.deathbanksentinel;
+package com.deathbankutility;
 
 /**
  * How the plugin learned the current deathbank state. The UI always shows this
