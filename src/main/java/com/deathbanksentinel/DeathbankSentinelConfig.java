@@ -5,6 +5,7 @@ import net.runelite.client.config.Alpha;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.ConfigSection;
 import net.runelite.client.config.Notification;
 import net.runelite.client.config.Range;
 
@@ -79,5 +80,36 @@ public interface DeathbankSentinelConfig extends Config
 	default int damageWarningCooldownTicks()
 	{
 		return 50;
+	}
+
+	@ConfigSection(
+		name = "Feedback",
+		description = "Suggestions, bug reports, and support",
+		position = 99
+	)
+	String feedbackSection = "feedbackSection";
+
+	@ConfigItem(
+		keyName = "suggestButton",
+		name = "Suggest a feature",
+		description = "Have an idea or found a bug? Click the box to open the GitHub issues page",
+		section = feedbackSection,
+		position = 0
+	)
+	default boolean suggestButton()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "supportButton",
+		name = "Buy me a coffee ❤",
+		description = "Enjoying the plugin? Click the box to open the Ko-fi page",
+		section = feedbackSection,
+		position = 1
+	)
+	default boolean supportButton()
+	{
+		return false;
 	}
 }

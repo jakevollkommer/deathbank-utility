@@ -51,6 +51,7 @@ import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
@@ -58,12 +59,13 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.LinkBrowser;
 
 @Slf4j
 @PluginDescriptor(
 	name = "Deathbank Sentinel",
 	description = "Tracks item retrieval services (deathbanks) and warns before you lose what's inside",
-	tags = {"death", "deathbank", "item", "retrieval", "warning", "uim"}
+	tags = {"jake", "death", "deathbank", "bank", "item", "items", "retrieval", "service", "warning", "zulrah", "vorkath", "nex", "tob", "toa", "uim"}
 )
 public class DeathbankSentinelPlugin extends Plugin
 {
@@ -252,6 +254,28 @@ public class DeathbankSentinelPlugin extends Plugin
 	{
 		loadState();
 		updatePanel();
+	}
+
+	// The config panel cannot host real buttons, so the Feedback "buttons" are checkboxes
+	// that act as buttons: any click of the box, tick or untick, opens the link.
+	@Subscribe
+	public void onConfigChanged(ConfigChanged event)
+	{
+		if (!DeathbankSentinelConfig.GROUP.equals(event.getGroup()) || event.getNewValue() == null)
+		{
+			return;
+		}
+
+		if ("suggestButton".equals(event.getKey()))
+		{
+			LinkBrowser.browse("https://github.com/jakevollkommer/deathbank-sentinel/issues");
+			return;
+		}
+
+		if ("supportButton".equals(event.getKey()))
+		{
+			LinkBrowser.browse("https://ko-fi.com/jakevollkommer");
+		}
 	}
 
 	@Subscribe
