@@ -65,7 +65,10 @@ import net.runelite.client.util.LinkBrowser;
 @PluginDescriptor(
 	name = "Deathbank Utility",
 	description = "Tracks item retrieval services (deathbanks) and warns before you lose what's inside",
-	tags = {"jake", "death", "deathbank", "bank", "item", "items", "retrieval", "service", "warning", "zulrah", "vorkath", "nex", "tob", "toa", "uim"}
+	tags = {"jake", "death", "deathbank", "deathpile", "death pile", "bank", "item", "items", "retrieval", "service",
+		"gravestone", "grave", "storage", "tracker", "reminder", "alert", "safety", "wipe", "lost",
+		"uim", "ultimate ironman", "ironman", "hardcore", "pvm", "boss", "raid",
+		"zulrah", "vorkath", "nex", "tob", "toa", "hydra", "nightmare", "hespori", "sepulchre", "mimic", "warning"}
 )
 public class DeathbankUtilityPlugin extends Plugin
 {
