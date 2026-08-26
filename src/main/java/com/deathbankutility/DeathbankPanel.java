@@ -79,11 +79,10 @@ class DeathbankPanel extends PluginPanel
 			return;
 		}
 
-		String service = state.getServiceName() != null ? state.getServiceName() : "Unknown location";
-		statusLabel.setText("<html>Deathbank active: " + service + "</html>");
+		statusLabel.setText("<html>Deathbank active: " + state.displayLabel() + "</html>");
 		statusLabel.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
-		detailLabel.setText("<html>Confidence: " + state.getConfidence().name().toLowerCase()
-			+ ". Any unsafe death anywhere deletes these items.</html>");
+		detailLabel.setText("<html>Confidence: " + state.getConfidence().getLabel()
+			+ ". Any unsafe death anywhere deletes these items." + feeSentence(state) + "</html>");
 		contentsLabel.setText(contentsText(state, items));
 
 		itemGrid.removeAll();
@@ -101,6 +100,15 @@ class DeathbankPanel extends PluginPanel
 		itemGrid.removeAll();
 		itemGrid.revalidate();
 		itemGrid.repaint();
+	}
+
+	private static String feeSentence(DeathbankState state)
+	{
+		if (state.getService() == null)
+		{
+			return "";
+		}
+		return " Reclaim fee: " + state.getService().getFeeText() + ".";
 	}
 
 	private static String contentsText(DeathbankState state, List<PanelItem> items)

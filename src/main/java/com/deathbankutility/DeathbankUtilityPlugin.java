@@ -43,8 +43,7 @@ import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
-import net.runelite.api.gameval.NpcID;
-import net.runelite.api.gameval.ObjectID;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.Notifier;
@@ -60,6 +59,7 @@ import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.LinkBrowser;
+import net.runelite.client.util.Text;
 
 @Slf4j
 @PluginDescriptor(
@@ -72,7 +72,8 @@ import net.runelite.client.util.LinkBrowser;
 )
 public class DeathbankUtilityPlugin extends Plugin
 {
-	// Server messages (matched on substring); exact wording re-verified in TESTING.md
+	// Server messages (matched on substring after tag stripping); exact wording
+	// re-verified in TESTING.md
 	private static final String MSG_RETRIEVAL_SERVICE = "items stored in an item retrieval service";
 	private static final String MSG_RETRIEVED_SOME = "retrieved some of your items";
 	private static final String MSG_DIED_AGAIN = "You have died again";
@@ -83,7 +84,6 @@ public class DeathbankUtilityPlugin extends Plugin
 	private static final String ZULRAH_DIALOG_HOLDING_STUFF = "I've got some stuff you left at the shrine";
 	private static final String ZULRAH_DIALOG_RETURNED = "I've returned it to you now";
 	private static final String ZULRAH_DIALOG_NOTHING = "I don't have anything for you to collect";
-	private static final Set<Integer> ZULRAH_CLAIM_REGIONS = Set.of(8495, 8751);
 
 	// Deaths here never wipe a deathbank (list from zodaz/item-retrieval-warning, BSD-2)
 	private static final Set<Integer> SAFE_DEATH_REGIONS = Set.of(
@@ -107,34 +107,14 @@ public class DeathbankUtilityPlugin extends Plugin
 		12127, 7512, 7768 // Gauntlet (items never enter)
 	);
 
-	// Retrieval chests known by object ID; the rest are NPCs (below).
-	// TODO from in-game testing: Mimic casket, Sepulchre Mysterious Stranger, Hespori's Arno
-	// Raw IDs where the gameval constant lives in package-private ObjectID1
-	private static final Set<Integer> RETRIEVAL_OBJECT_IDS = Set.of(
-		32656, // TOB_SURFACE_GRAVESTONE_CHEST
-		42854, 42858, // NEX_GRAVESTONE_CHEST (+_NOOP)
-		46078, 46079, // TOA_LOBBY_GRAVESTONE_CHEST (+_NOOP)
-		34733, // TRAIL_MIMIC_ENABLER — the Mimic's Strange casket
-		ObjectID.GARGBOSS_GRAVESTONE_RETRIEVAL
-	);
-	private static final Set<Integer> RETRIEVAL_NPC_IDS = Set.of(
-		NpcID.SNAKEBOSS_PRIEST_1OP, NpcID.SNAKEBOSS_PRIEST_2OPS, // Priestess Zul-Gwenwynig
-		NpcID.TORFINN_RELLEKKA, NpcID.TORFINN_UNGAEL, NpcID.TORFINN_NO_TRAVEL,
-		NpcID.TORFINN_TRAVEL_RELLEKKA, NpcID.TORFINN_TRAVEL_UNGAEL,
-		NpcID.TORFINN_COLLECT_RELLEKKA, NpcID.TORFINN_COLLECT_UNGAEL,
-		NpcID.KAHLITH_ALCHEMICAL_HUNTER, // Orrvor quo Maten (Hydra)
-		NpcID.SHURA, NpcID.SHURA_1OP, NpcID.SHURA_2OP,
-		NpcID.NIGHTMARE_CHALLENGE_SISTER, NpcID.NIGHTMARE_CHALLENGE_SISTER_1OP, NpcID.NIGHTMARE_CHALLENGE_SISTER_2OP,
-		NpcID.FARMING_GUILD_HESPORI_FARMER, // Arno
-		NpcID.HALLOWED_LOBBY_NPC_1OP, NpcID.HALLOWED_LOBBY_NPC_3OP, // Sepulchre Mysterious Stranger
-		NpcID.FOSSIL_MINEGUARD // Petrified Pete
-	);
-
 	private static final String STATE_KEY = "state";
 	private static final int LOGIN_RECONCILE_TICKS = 25;
 	private static final int DEATH_RESOLVE_MIN_TICKS = 3;
 	private static final int DEATH_RESOLVE_TIMEOUT_TICKS = 50;
 	private static final int DAMAGE_WARNING_DISPLAY_TICKS = 8;
+	// The retrieval window's title component; zodaz's plugin reads child 1, but
+	// gameval names it FRAME — TESTING.md B1 confirms which child holds the title
+	private static final int RETRIEVAL_WINDOW_TITLE_CHILD = 1;
 
 	@Inject
 	private Client client;
@@ -162,15 +142,16 @@ public class DeathbankUtilityPlugin extends Plugin
 	private DeathbankWarningOverlay warningOverlay;
 
 	@Getter
-	private DeathbankState state = DeathbankState.inactive(Confidence.UNKNOWN);
+	private DeathbankState state = DeathbankState.unknown();
 	@Getter
 	private final List<GameObject> retrievalObjects = new ArrayList<>();
 	@Getter
 	private final List<NPC> retrievalNpcs = new ArrayList<>();
+	@Getter
+	private BufferedImage indicatorIcon;
 
 	private DeathbankPanel panel;
 	private NavigationButton navButton;
-	private BufferedImage indicatorIcon;
 	private boolean retrievalWindowOpen;
 	private boolean graveWindowOpen;
 	private int loginReconcileTicksRemaining = -1;
@@ -192,6 +173,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		indicatorIcon = itemManager.getImage(ItemID.SKULL);
 		panel = new DeathbankPanel();
 		navButton = NavigationButton.builder()
 			.tooltip("Deathbank Utility")
@@ -227,15 +209,6 @@ public class DeathbankUtilityPlugin extends Plugin
 	boolean isDamageWarningActive()
 	{
 		return client.getTickCount() <= damageWarningUntilTick;
-	}
-
-	BufferedImage getIndicatorIcon()
-	{
-		if (indicatorIcon == null)
-		{
-			indicatorIcon = itemManager.getImage(net.runelite.api.gameval.ItemID.SKULL);
-		}
-		return indicatorIcon;
 	}
 
 	@Subscribe
@@ -284,7 +257,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onGameObjectSpawned(GameObjectSpawned event)
 	{
-		if (!RETRIEVAL_OBJECT_IDS.contains(event.getGameObject().getId()))
+		if (!RetrievalService.isClaimObject(event.getGameObject().getId()))
 		{
 			return;
 		}
@@ -300,7 +273,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onNpcSpawned(NpcSpawned event)
 	{
-		if (!RETRIEVAL_NPC_IDS.contains(event.getNpc().getId()))
+		if (!RetrievalService.isClaimNpc(event.getNpc().getId()))
 		{
 			return;
 		}
@@ -321,19 +294,18 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 
-		String message = event.getMessage();
+		String message = Text.removeTags(event.getMessage());
 		boolean confirmsBankExists = message.contains(MSG_RETRIEVAL_SERVICE) || message.contains(MSG_RETRIEVED_SOME);
 		if (confirmsBankExists)
 		{
-			loginReconcileTicksRemaining = -1;
-			markVerifiedActive(state.getServiceName());
+			markVerifiedActive(state.getService(), state.getWindowTitle());
 			return;
 		}
 
 		boolean confirmsBankWiped = message.contains(MSG_DIED_AGAIN) && message.contains(MSG_LOST_ITEMS);
 		if (confirmsBankWiped)
 		{
-			markInactive(Confidence.VERIFIED);
+			transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
 		}
 	}
 
@@ -350,7 +322,6 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 		retrievalWindowOpen = true;
-		loginReconcileTicksRemaining = -1;
 		clientThread.invokeLater(this::readRetrievalContainer);
 	}
 
@@ -406,7 +377,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		// Any unsafe death wipes whatever was already banked
 		if (state.isActive())
 		{
-			markInactive(Confidence.INFERRED);
+			transitionTo(DeathbankState.inactive(Confidence.INFERRED));
 		}
 
 		Optional<RetrievalService> service = RetrievalService.fromRegion(regionId);
@@ -492,8 +463,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 
 		log.debug("Death at {} resolved: ~{} stacks banked", service.getDisplayName(), banked.size());
-		state = DeathbankState.active(Confidence.INFERRED, service.getDisplayName(), banked, false);
-		stateChanged();
+		transitionTo(DeathbankState.active(Confidence.INFERRED, service, null, banked, false));
 	}
 
 	private void clearPendingDeath()
@@ -530,35 +500,36 @@ public class DeathbankUtilityPlugin extends Plugin
 		if (warningDisabledInGame)
 		{
 			log.debug("Login reconcile skipped: in-game retrieval warning is disabled");
-			downgradeToUnknown();
+			transitionTo(state.withConfidence(Confidence.UNKNOWN));
 			return;
 		}
 
 		log.debug("Login reconcile: no retrieval message after {} ticks, clearing saved deathbank", LOGIN_RECONCILE_TICKS);
-		markInactive(Confidence.VERIFIED);
+		transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
 	}
 
 	// --- Zulrah: dialog-only retrieval, no interface ---
 
 	private void tickZulrahDialog()
 	{
-		if (!ZULRAH_CLAIM_REGIONS.contains(currentRegionId()))
-		{
-			return;
-		}
-
+		// Widget lookup first: it's a cheap null almost every tick, while the
+		// region check allocates instance-aware coordinates
 		Widget dialog = client.getWidget(InterfaceID.ChatLeft.TEXT);
 		if (dialog == null)
 		{
 			return;
 		}
+		if (!RetrievalService.ZULRAH.getClaimRegionIds().contains(currentRegionId()))
+		{
+			return;
+		}
 
-		String text = dialog.getText().replace("<br>", " ");
+		String text = Text.sanitizeMultilineText(dialog.getText());
 		boolean mentionsHeldItems = text.contains(ZULRAH_DIALOG_LEFT_STUFF) || text.contains(ZULRAH_DIALOG_HOLDING_STUFF);
 		if (mentionsHeldItems)
 		{
-			boolean itemsJustReturned = text.contains(ZULRAH_DIALOG_RETURNED);
-			applyZulrahDialogState(!itemsJustReturned);
+			boolean itemsStillHeld = !text.contains(ZULRAH_DIALOG_RETURNED);
+			applyZulrahDialogState(itemsStillHeld);
 			return;
 		}
 		if (text.contains(ZULRAH_DIALOG_NOTHING))
@@ -577,10 +548,10 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 		if (bankActive)
 		{
-			markVerifiedActive(RetrievalService.ZULRAH.getDisplayName());
+			markVerifiedActive(RetrievalService.ZULRAH, null);
 			return;
 		}
-		markInactive(Confidence.VERIFIED);
+		transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
 	}
 
 	// --- Verified contents from the retrieval interface ---
@@ -597,56 +568,50 @@ public class DeathbankUtilityPlugin extends Plugin
 
 	private void applyVerifiedContents(Item[] items)
 	{
-		List<DeathbankState.ItemStack> stacks = toItemStacks(Arrays.stream(items));
+		List<DeathbankState.ItemStack> stacks = toItemStacks(items);
 		if (stacks.isEmpty())
 		{
-			markInactive(Confidence.VERIFIED);
+			transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
 			return;
 		}
 
 		String title = retrievalWindowTitle();
+		RetrievalService service = RetrievalService.fromName(title).orElse(state.getService());
 		log.debug("Verified deathbank contents: {} stacks, window title '{}'", stacks.size(), title);
-		state = DeathbankState.active(Confidence.VERIFIED, title != null ? title : state.getServiceName(), stacks, true);
-		stateChanged();
+		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, title, stacks, true));
 	}
 
 	private String retrievalWindowTitle()
 	{
-		Widget title = client.getWidget(InterfaceID.GRAVESTONE_RETRIEVAL, 1);
-		return title != null ? title.getText() : null;
+		Widget title = client.getWidget(InterfaceID.GRAVESTONE_RETRIEVAL, RETRIEVAL_WINDOW_TITLE_CHILD);
+		return title != null ? Text.removeTags(title.getText()) : null;
 	}
 
-	// --- State transitions ---
+	// --- State transitions: every change goes through this one door ---
 
-	private void markVerifiedActive(String serviceName)
+	private void transitionTo(DeathbankState next)
+	{
+		// Any server-confirmed state supersedes the login reconcile countdown
+		boolean confirmedByServer = next.getConfidence() == Confidence.VERIFIED;
+		if (confirmedByServer)
+		{
+			loginReconcileTicksRemaining = -1;
+		}
+		state = next;
+		saveState();
+		updatePanel();
+	}
+
+	private void markVerifiedActive(RetrievalService service, String windowTitle)
 	{
 		boolean alreadyVerifiedActive = state.isActive() && state.getConfidence() == Confidence.VERIFIED;
 		if (alreadyVerifiedActive)
 		{
 			return;
 		}
-		// Keep any previously recorded items (still an estimate until the interface confirms)
-		state = DeathbankState.active(Confidence.VERIFIED, serviceName, state.getItems(), false);
-		stateChanged();
-	}
-
-	private void markInactive(Confidence confidence)
-	{
-		state = DeathbankState.inactive(confidence);
-		stateChanged();
-	}
-
-	private void downgradeToUnknown()
-	{
-		state.setConfidence(Confidence.UNKNOWN);
-		state.touch();
-		stateChanged();
-	}
-
-	private void stateChanged()
-	{
-		saveState();
-		updatePanel();
+		// Keep any previously recorded items; they stay flagged as estimates
+		// until the retrieval interface confirms them
+		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, windowTitle, state.getItems(), state.isItemsVerified()));
 	}
 
 	// --- Side panel ---
@@ -682,31 +647,27 @@ public class DeathbankUtilityPlugin extends Plugin
 
 	private void loadState()
 	{
-		String json = configManager.getRSProfileConfiguration(DeathbankUtilityConfig.GROUP, STATE_KEY);
-		state = parseState(json);
+		DeathbankState saved = parseState(configManager.getRSProfileConfiguration(DeathbankUtilityConfig.GROUP, STATE_KEY));
 		// A previous session's certainty is not this session's certainty
-		boolean staleClaim = state.isActive() && state.getConfidence() == Confidence.VERIFIED;
-		if (staleClaim)
-		{
-			state.setConfidence(Confidence.UNKNOWN);
-		}
+		boolean staleClaim = saved.isActive() && saved.getConfidence() == Confidence.VERIFIED;
+		state = staleClaim ? saved.withConfidence(Confidence.UNKNOWN) : saved;
 	}
 
 	private DeathbankState parseState(String json)
 	{
 		if (json == null)
 		{
-			return DeathbankState.inactive(Confidence.UNKNOWN);
+			return DeathbankState.unknown();
 		}
 		try
 		{
 			DeathbankState parsed = gson.fromJson(json, DeathbankState.class);
-			return parsed != null ? parsed : DeathbankState.inactive(Confidence.UNKNOWN);
+			return parsed != null ? parsed : DeathbankState.unknown();
 		}
 		catch (JsonSyntaxException e)
 		{
 			log.warn("Discarding unparseable saved deathbank state", e);
-			return DeathbankState.inactive(Confidence.UNKNOWN);
+			return DeathbankState.unknown();
 		}
 	}
 
@@ -719,7 +680,7 @@ public class DeathbankUtilityPlugin extends Plugin
 
 	private String serviceSuffix()
 	{
-		return state.getServiceName() != null ? " at " + state.getServiceName() : "";
+		return state.isLocationKnown() ? " at " + state.displayLabel() : "";
 	}
 
 	private int currentRegionId()
@@ -737,15 +698,20 @@ public class DeathbankUtilityPlugin extends Plugin
 			.map(client::getItemContainer)
 			.filter(Objects::nonNull)
 			.flatMap(container -> Arrays.stream(container.getItems()))
-			.filter(item -> item.getId() != -1 && item.getQuantity() > 0)
+			.filter(DeathbankUtilityPlugin::isRealItem)
 			.collect(Collectors.toMap(Item::getId, Item::getQuantity, Integer::sum, HashMap::new));
 	}
 
-	private static List<DeathbankState.ItemStack> toItemStacks(Stream<Item> items)
+	private static List<DeathbankState.ItemStack> toItemStacks(Item[] items)
 	{
-		return items
-			.filter(item -> item.getId() != -1 && item.getQuantity() > 0)
+		return Arrays.stream(items)
+			.filter(DeathbankUtilityPlugin::isRealItem)
 			.map(item -> new DeathbankState.ItemStack(item.getId(), item.getQuantity()))
 			.collect(Collectors.toList());
+	}
+
+	private static boolean isRealItem(Item item)
+	{
+		return item.getId() != -1 && item.getQuantity() > 0;
 	}
 }

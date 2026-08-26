@@ -5,7 +5,6 @@ import java.awt.Dimension;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.Point;
-import java.awt.image.BufferedImage;
 import javax.inject.Inject;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.overlay.Overlay;
@@ -20,12 +19,9 @@ import net.runelite.client.ui.overlay.components.TextComponent;
 class DeathbankIndicatorOverlay extends Overlay
 {
 	private static final Color BACKGROUND = new Color(120, 0, 0, 170);
-	private static final Color VERIFIED_COLOR = Color.WHITE;
-	private static final Color INFERRED_COLOR = Color.YELLOW;
-	private static final Color UNKNOWN_COLOR = Color.ORANGE;
 	private static final int BOX_SIZE = 40;
+	private static final Dimension BOX_DIMENSION = new Dimension(BOX_SIZE, BOX_SIZE);
 	private static final int LABEL_HEIGHT = 14;
-	private static final int MAX_LABEL_CHARS = 10;
 
 	private final DeathbankUtilityPlugin plugin;
 	private final DeathbankUtilityConfig config;
@@ -48,23 +44,21 @@ class DeathbankIndicatorOverlay extends Overlay
 			return null;
 		}
 
-		BufferedImage icon = plugin.getIndicatorIcon();
 		InfoBoxComponent box = new InfoBoxComponent();
-		box.setImage(icon);
+		box.setImage(plugin.getIndicatorIcon());
 		box.setText(countText(state));
-		box.setColor(confidenceColor(state));
+		box.setColor(state.getConfidence().getColor());
 		box.setBackgroundColor(BACKGROUND);
-		box.setPreferredSize(new Dimension(BOX_SIZE, BOX_SIZE));
+		box.setPreferredSize(BOX_DIMENSION);
 		box.render(graphics);
 
-		renderLocationLabel(graphics, state);
+		renderLocationLabel(graphics, state.shortLabel());
 		return new Dimension(BOX_SIZE, BOX_SIZE + LABEL_HEIGHT);
 	}
 
-	private static void renderLocationLabel(Graphics2D graphics, DeathbankState state)
+	private static void renderLocationLabel(Graphics2D graphics, String label)
 	{
 		graphics.setFont(FontManager.getRunescapeSmallFont());
-		String label = locationLabel(state);
 		FontMetrics metrics = graphics.getFontMetrics();
 
 		TextComponent text = new TextComponent();
@@ -72,23 +66,6 @@ class DeathbankIndicatorOverlay extends Overlay
 		text.setColor(Color.WHITE);
 		text.setPosition(new Point((BOX_SIZE - metrics.stringWidth(label)) / 2, BOX_SIZE + LABEL_HEIGHT - 3));
 		text.render(graphics);
-	}
-
-	private static String locationLabel(DeathbankState state)
-	{
-		String serviceName = state.getServiceName();
-		return RetrievalService.fromName(serviceName)
-			.map(RetrievalService::getShortName)
-			.orElseGet(() -> truncate(serviceName));
-	}
-
-	private static String truncate(String serviceName)
-	{
-		if (serviceName == null || serviceName.isEmpty())
-		{
-			return "?";
-		}
-		return serviceName.length() <= MAX_LABEL_CHARS ? serviceName : serviceName.substring(0, MAX_LABEL_CHARS);
 	}
 
 	private static String countText(DeathbankState state)
@@ -99,18 +76,5 @@ class DeathbankIndicatorOverlay extends Overlay
 		}
 		String qualifier = state.isItemsVerified() ? "" : "~";
 		return qualifier + state.getItems().size();
-	}
-
-	private static Color confidenceColor(DeathbankState state)
-	{
-		switch (state.getConfidence())
-		{
-			case VERIFIED:
-				return VERIFIED_COLOR;
-			case INFERRED:
-				return INFERRED_COLOR;
-			default:
-				return UNKNOWN_COLOR;
-		}
 	}
 }

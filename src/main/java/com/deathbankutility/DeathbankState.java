@@ -22,41 +22,77 @@ public class DeathbankState
 		private int quantity;
 	}
 
+	private static final int MAX_SHORT_LABEL_CHARS = 10;
+
 	private boolean active;
 	private Confidence confidence = Confidence.UNKNOWN;
-	private String serviceName;
+	private RetrievalService service;
+	private String windowTitle;
 	private List<ItemStack> items = List.of();
 	private boolean itemsVerified;
-	private long lastVerifiedAtMillis;
-	private long lastUpdatedAtMillis;
+
+	static DeathbankState unknown()
+	{
+		return inactive(Confidence.UNKNOWN);
+	}
 
 	static DeathbankState inactive(Confidence confidence)
 	{
 		DeathbankState state = new DeathbankState();
 		state.confidence = confidence;
-		state.touch();
 		return state;
 	}
 
-	static DeathbankState active(Confidence confidence, String serviceName, List<ItemStack> items, boolean itemsVerified)
+	static DeathbankState active(Confidence confidence, RetrievalService service, String windowTitle,
+		List<ItemStack> items, boolean itemsVerified)
 	{
 		DeathbankState state = new DeathbankState();
 		state.active = true;
 		state.confidence = confidence;
-		state.serviceName = serviceName;
+		state.service = service;
+		state.windowTitle = windowTitle;
 		state.items = items;
 		state.itemsVerified = itemsVerified;
-		state.touch();
 		return state;
 	}
 
-	void touch()
+	DeathbankState withConfidence(Confidence newConfidence)
 	{
-		lastUpdatedAtMillis = System.currentTimeMillis();
-		boolean confirmedByServer = confidence == Confidence.VERIFIED;
-		if (confirmedByServer)
+		DeathbankState copy = new DeathbankState();
+		copy.active = active;
+		copy.confidence = newConfidence;
+		copy.service = service;
+		copy.windowTitle = windowTitle;
+		copy.items = items;
+		copy.itemsVerified = itemsVerified;
+		return copy;
+	}
+
+	boolean isLocationKnown()
+	{
+		return service != null || windowTitle != null;
+	}
+
+	String displayLabel()
+	{
+		if (service != null)
 		{
-			lastVerifiedAtMillis = lastUpdatedAtMillis;
+			return service.getDisplayName();
 		}
+		return windowTitle != null ? windowTitle : "Unknown location";
+	}
+
+	String shortLabel()
+	{
+		if (service != null)
+		{
+			return service.getShortName();
+		}
+		return windowTitle != null ? truncate(windowTitle) : "?";
+	}
+
+	private static String truncate(String label)
+	{
+		return label.length() <= MAX_SHORT_LABEL_CHARS ? label : label.substring(0, MAX_SHORT_LABEL_CHARS);
 	}
 }

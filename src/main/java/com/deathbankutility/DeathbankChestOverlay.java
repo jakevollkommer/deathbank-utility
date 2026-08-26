@@ -13,6 +13,7 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.OverlayUtil;
 import net.runelite.client.ui.overlay.outline.ModelOutlineRenderer;
+import net.runelite.client.util.ColorUtil;
 
 /**
  * Outlines retrieval chests and NPCs while a deathbank is active and labels
@@ -43,30 +44,31 @@ class DeathbankChestOverlay extends Overlay
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
-		boolean shouldHighlight = config.highlightRetrievalPoints() && plugin.getState().isActive();
-		if (!shouldHighlight)
+		boolean nothingToHighlight = plugin.getRetrievalObjects().isEmpty() && plugin.getRetrievalNpcs().isEmpty();
+		if (nothingToHighlight || !config.highlightRetrievalPoints() || !plugin.getState().isActive())
 		{
 			return null;
 		}
 
 		graphics.setFont(FontManager.getRunescapeBoldFont());
-		Color color = config.highlightColor();
-		Color labelColor = new Color(color.getRed(), color.getGreen(), color.getBlue());
+		Color outlineColor = config.highlightColor();
+		// The config color's alpha suits the outline; label text needs full opacity
+		Color labelColor = ColorUtil.colorWithAlpha(outlineColor, 255);
 
-		plugin.getRetrievalObjects().forEach(object -> renderObject(graphics, object, color, labelColor));
-		plugin.getRetrievalNpcs().forEach(npc -> renderNpc(graphics, npc, color, labelColor));
+		plugin.getRetrievalObjects().forEach(object -> renderObject(graphics, object, outlineColor, labelColor));
+		plugin.getRetrievalNpcs().forEach(npc -> renderNpc(graphics, npc, outlineColor, labelColor));
 		return null;
 	}
 
-	private void renderObject(Graphics2D graphics, TileObject object, Color color, Color labelColor)
+	private void renderObject(Graphics2D graphics, TileObject object, Color outlineColor, Color labelColor)
 	{
-		modelOutlineRenderer.drawOutline(object, OUTLINE_WIDTH, color, OUTLINE_FEATHER);
+		modelOutlineRenderer.drawOutline(object, OUTLINE_WIDTH, outlineColor, OUTLINE_FEATHER);
 		renderLabel(graphics, object.getCanvasTextLocation(graphics, LABEL, OBJECT_LABEL_Z_OFFSET), labelColor);
 	}
 
-	private void renderNpc(Graphics2D graphics, NPC npc, Color color, Color labelColor)
+	private void renderNpc(Graphics2D graphics, NPC npc, Color outlineColor, Color labelColor)
 	{
-		modelOutlineRenderer.drawOutline(npc, OUTLINE_WIDTH, color, OUTLINE_FEATHER);
+		modelOutlineRenderer.drawOutline(npc, OUTLINE_WIDTH, outlineColor, OUTLINE_FEATHER);
 		renderLabel(graphics, npc.getCanvasTextLocation(graphics, LABEL, npc.getLogicalHeight() + NPC_LABEL_Z_OFFSET), labelColor);
 	}
 

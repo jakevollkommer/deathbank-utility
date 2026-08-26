@@ -1,0 +1,25 @@
+package com.deathbankutility;
+
+import net.runelite.api.gameval.NpcID;
+import org.junit.Test;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
+/**
+ * Class-init smoke test for the hardcoded ID registry: a duplicate entry in any
+ * Set.of would throw ExceptionInInitializerError at class load, which in the
+ * client surfaces as an opaque crash instead of a test failure.
+ */
+public class RetrievalServiceInitTest
+{
+	@Test
+	public void registryInitializesAndResolves()
+	{
+		assertEquals(12, RetrievalService.values().length);
+		assertTrue(RetrievalService.isClaimNpc(NpcID.FOSSIL_MINEGUARD));
+		assertTrue(RetrievalService.isClaimObject(32656));
+		assertEquals(RetrievalService.HESPORI, RetrievalService.fromRegion(5021).orElse(null));
+		assertEquals(RetrievalService.THEATRE_OF_BLOOD, RetrievalService.fromName("Theatre of Blood Retrieval").orElse(null));
+	}
+}

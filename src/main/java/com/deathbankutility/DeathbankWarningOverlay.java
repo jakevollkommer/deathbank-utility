@@ -5,6 +5,7 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
+import java.awt.Point;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.client.ui.FontManager;
@@ -34,7 +35,7 @@ class DeathbankWarningOverlay extends Overlay
 		this.client = client;
 		this.plugin = plugin;
 		this.config = config;
-		setPosition(OverlayPosition.DYNAMIC);
+		setPosition(OverlayPosition.TOP_CENTER);
 		setLayer(OverlayLayer.ABOVE_WIDGETS);
 	}
 
@@ -47,23 +48,24 @@ class DeathbankWarningOverlay extends Overlay
 			return null;
 		}
 
+		graphics.setFont(WARNING_FONT);
+		FontMetrics metrics = graphics.getFontMetrics();
+		// Keep reserving the text's space during flash-off frames so it doesn't jump
+		Dimension size = new Dimension(metrics.stringWidth(WARNING_TEXT), metrics.getHeight());
+
 		boolean flashOff = client.getGameCycle() % FLASH_CYCLE_CLIENT_TICKS >= FLASH_CYCLE_CLIENT_TICKS / 2;
 		if (flashOff)
 		{
-			return null;
+			return size;
 		}
-
-		graphics.setFont(WARNING_FONT);
-		FontMetrics metrics = graphics.getFontMetrics();
-		int x = (client.getCanvasWidth() - metrics.stringWidth(WARNING_TEXT)) / 2;
-		int y = client.getCanvasHeight() / 4;
 
 		TextComponent text = new TextComponent();
 		text.setText(WARNING_TEXT);
 		text.setColor(WARNING_COLOR);
 		text.setFont(WARNING_FONT);
 		text.setOutline(true);
-		text.setPosition(new java.awt.Point(x, y));
-		return text.render(graphics);
+		text.setPosition(new Point(0, metrics.getAscent()));
+		text.render(graphics);
+		return size;
 	}
 }
