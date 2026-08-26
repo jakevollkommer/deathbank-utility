@@ -84,15 +84,15 @@ public interface DeathbankUtilityConfig extends Config
 
 	@ConfigSection(
 		name = "Feedback",
-		description = "Suggestions, bug reports, and support",
+		description = "Early release: not feature complete and tracking may be inaccurate. Bug reports and feature requests are very welcome",
 		position = 99
 	)
 	String feedbackSection = "feedbackSection";
 
 	@ConfigItem(
 		keyName = "suggestButton",
-		name = "Suggest a feature",
-		description = "Have an idea or found a bug? Click the box to open the GitHub issues page",
+		name = "Report a bug or idea",
+		description = "Found a bug or have a feature request? Click the box to open the GitHub issues page",
 		section = feedbackSection,
 		position = 0
 	)

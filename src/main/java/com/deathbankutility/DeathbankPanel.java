@@ -57,8 +57,16 @@ class DeathbankPanel extends PluginPanel
 		JPanel gridWrapper = new JPanel(new BorderLayout());
 		gridWrapper.add(itemGrid, BorderLayout.NORTH);
 
+		JLabel disclaimer = new JLabel("<html>Early release: tracking can be wrong. Never treat a missing "
+			+ "warning as proof you have no deathbank. "
+			+ "Report bugs and request features from the plugin config's Feedback section.</html>");
+		disclaimer.setFont(FontManager.getRunescapeSmallFont());
+		disclaimer.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
+		disclaimer.setBorder(BorderFactory.createEmptyBorder(12, 0, 0, 0));
+
 		add(header);
 		add(gridWrapper);
+		add(disclaimer);
 
 		showInactive();
 	}

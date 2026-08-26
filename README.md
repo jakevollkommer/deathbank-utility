@@ -19,9 +19,18 @@ game only mentions in an easily-missed login message. This plugin:
 Unlike prior art, inferences are never presented as facts — every state carries how
 the plugin learned it.
 
-Roadmap: retrieval chest/NPC highlighting (phase 2), a side panel with the item grid
-and reclaim fee, and optional blocking of dangerous content while a bank is active
-(phase 3). Testing criteria for dev-client sign-off live in [TESTING.md](TESTING.md).
+## Early release
+
+This plugin is an early release and not feature complete. Deathbank state is inferred
+from game signals and can be wrong in both directions. Never treat a missing warning
+as proof you have no deathbank, especially on an ultimate ironman. Bug
+reports and feature requests are very welcome on the
+[issues page](https://github.com/jakevollkommer/deathbank-utility/issues), also
+reachable from the plugin config's Feedback section.
+
+Roadmap: optional blocking of dangerous content while a bank is active, and reclaim
+fees in the side panel. Testing criteria for dev-client sign-off live in
+[TESTING.md](TESTING.md).
 
 ## Development
 
