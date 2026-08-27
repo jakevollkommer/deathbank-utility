@@ -71,14 +71,21 @@ public enum RetrievalService
 		ids(ObjectID.GARGBOSS_GRAVESTONE_RETRIEVAL),
 		ids()),
 
-	// The Nightmare and Phosani's share a region and can't be told apart at death
-	// time; claim points: Shura and Sister Senga
+	// Phosani's shares the Nightmare's region, so a death there is attributed to
+	// NIGHTMARE and only corrected once the retrieval window or a game message
+	// names Phosani's. Declared first so its name wins the text match.
+	PHOSANI("Phosani's Nightmare", "Phosani", "60k",
+		ids(),
+		ids(),
+		ids(),
+		ids(NpcID.NIGHTMARE_CHALLENGE_SISTER, NpcID.NIGHTMARE_CHALLENGE_SISTER_1OP, NpcID.NIGHTMARE_CHALLENGE_SISTER_2OP)),
+
+	// Claim point: Shura
 	NIGHTMARE("The Nightmare", "Nightmare", "60k",
 		ids(15515),
 		ids(),
 		ids(),
-		ids(NpcID.SHURA, NpcID.SHURA_1OP, NpcID.SHURA_2OP,
-			NpcID.NIGHTMARE_CHALLENGE_SISTER, NpcID.NIGHTMARE_CHALLENGE_SISTER_1OP, NpcID.NIGHTMARE_CHALLENGE_SISTER_2OP)),
+		ids(NpcID.SHURA, NpcID.SHURA_1OP, NpcID.SHURA_2OP)),
 
 	// Claim point: Mysterious Stranger in the lobby
 	HALLOWED_SEPULCHRE("Hallowed Sepulchre", "Sepulchre", "25k",
