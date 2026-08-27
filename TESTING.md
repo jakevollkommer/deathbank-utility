@@ -8,8 +8,14 @@ budget test dummy for anything requiring a real death. Check items off per build
 - [ ] **A1 — Login message (bank exists).** With items in any deathbank, log in.
       Infobox appears within a tick of the `items stored in an item retrieval service`
       game message; confidence shows *verified*.
-      → While here: **copy the exact full message text into this file** (we match on a
-      substring; the full wording + location phrasing is undocumented).
+      ✅ **CAPTURED 2026-08-27** (ToB deathbank, fresh login), exact text:
+      `@mes_hl_red@You have items stored in an item retrieval service. Please visit
+      the magical chest outside the Theatre of Blood. If you die again before
+      retrieving them, they will be lost.`
+      Two findings: the message names the location, so it is parsed to identify the
+      service without opening the chest; and it carries an unresolved `@mes_hl_red@`
+      formatting macro that `Text.removeTags` does not strip, so all matching runs
+      through `sanitize()` which removes `@...@` tokens too.
 - [ ] **A2 — Login reconciliation (bank gone).** Claim the bank on another client
       (or mobile), then log in on the dev client with stale "active" saved state.
       After ~15s (25 ticks) with no login message, the infobox clears. This is the
@@ -34,12 +40,46 @@ budget test dummy for anything requiring a real death. Check items off per build
 - [ ] **B1 — Contents verified on open.** Open the retrieval chest (Hespori → Arno).
       Item count in the indicator switches from `~N` yellow to exact `N` white
       (*verified*), and the side panel item grid matches the chest exactly. Debug
-      log prints the window title — **record the title text per service here**
-      (it's how we'll label which bank without region math).
+      ✅ **CAPTURED 2026-08-27 (ToB)**: the interface has no title component, so the
+      plugin scans INFO and FRAME text. Observed texts:
+      `Stack count: 1Guide value: 1,444 (approximately)` and
+      `Theatre of Blood Item Retrieval Service`. The second names the service, so
+      matching on it identifies the bank without region math. Capture the equivalent
+      string for the other services as they come up.
+
+      **Confirmed naming rule (2026-08-27):** window titles and death messages are
+      named after the *claim NPC*, not the boss, for NPC-based services. Captured:
+
+      | Service | Window title | Death message |
+      |---|---|---|
+      | Theatre of Blood | `Theatre of Blood Item Retrieval Service` | login: `...visit the magical chest outside the Theatre of Blood...` |
+      | The Nightmare | `Shura's Item Retrieval Service` | `Shura has retrieved some of your items. You can collect them from her in the Sisterhood Sanctuary.` |
+      | Phosani's Nightmare | `Sister Senga's Item Retrieval Service` | `Sister Senga has retrieved some of your items. You can collect them from her in the Sisterhood Sanctuary.` |
+
+      This is why `RetrievalService` carries name aliases. It also confirms the wiki
+      mapping: regular Nightmare uses Shura, Phosani's uses Sister Senga, and the two
+      are only distinguishable from this text (they share region 15515).
 - [ ] **B2 — Partial withdrawal tracked.** Take some items out while the window is
       open; count updates live.
-- [ ] **B3 — Emptying clears state.** Withdraw everything; infobox disappears and
-      state persists as inactive across a relog.
+- [x] **B3 — Emptying clears state.** Withdraw everything; the indicator disappears
+      and state persists as inactive across a relog.
+- [x] **B3b — Discarding clears state.** ✅ **VERIFIED 2026-08-27.** Discard-All, then
+      both confirmations. The emptied window reports `Stack count: 0` and the plugin
+      clears immediately ("Retrieval interface reports 0 stacks").
+
+      **What the game does on discard (all confirmed by instrumentation):**
+      - no `ItemContainerChanged` fires, and no game message is sent
+      - **no varp changes at all** ("Varps changed while retrieval window was open: none")
+      - the `Discard-All` click is component 602:10, but it is NOT sufficient evidence:
+        two confirmations follow and the second deliberately swaps the option order, so
+        the player can still back out
+      - after the discard the interface reopens with `Stack count: 0` while the backing
+        item container reads **null**, and the title degrades to a generic
+        "Item Retrieval Service"
+
+      Therefore emptiness is read from the interface's stack count, never from the
+      container. A null container read is also produced by simply closing the window
+      with items still inside, so it can never be treated as evidence of an empty bank.
 - [ ] **B4 — 602 vs 672 disambiguation.** Die with a normal gravestone, open the
       grave. The plugin must NOT treat grave contents as a deathbank (debug log
       shows "Ignoring gravestone container update"). Confirm with the widget
@@ -75,6 +115,17 @@ budget test dummy for anything requiring a real death. Check items off per build
       confidence, estimated/verified label, item grid with icons and name+quantity
       tooltips. Shows "No active deathbank" when inactive.
 
+## E2. Stale state at login (regression guard)
+
+- [ ] **E0 — No false warning at login.** With saved active state that is no longer
+      real (e.g. claimed on another client, or the client was killed before its
+      config flushed), logging in must NOT show the indicator. The panel reads
+      "Checking for a deathbank..." until the login message either confirms it
+      (indicator appears, verified) or the reconcile clears it silently.
+      Note: RuneLite flushes config on a timer and on graceful shutdown, so
+      `pkill`-ing the dev client loses recent state writes. Close the client
+      window instead when a test depends on persistence.
+
 ## E. Persistence & lifecycle
 
 - [ ] **E1 — Survives relog.** Active inferred state persists across logout/login;
@@ -91,9 +142,10 @@ budget test dummy for anything requiring a real death. Check items off per build
 
 | Needed | Where to get it | Status |
 |---|---|---|
-| Exact login warning text | A1 | ☐ |
+| Exact login warning text | A1 | ☑ captured, see A1 |
 | Exact died-again wipe message text | A6 | ☐ |
-| Retrieval window title per service | B1, each service | ☐ |
+| Retrieval window title per service | B1, each service | ☑ ToB captured, others pending |
 | Grave vs deathbank widget group IDs | B4, widget inspector | ☐ |
 | Chest/NPC object IDs per service (for phase 2 recoloring) | dev tools object inspector at each chest | ☐ |
+| Discard path | resolved: no events, no varps; read the interface stack count | ☑ |
 | Whether The Mimic / quest services hit the region fallback | die there (cheap quest replays not possible — low priority) | ☐ |

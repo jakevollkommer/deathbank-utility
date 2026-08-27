@@ -3,11 +3,19 @@
 RuneLite plugin that tracks OSRS item retrieval services (deathbanks — Zulrah, Vorkath,
 Nex, ToB, ToA, Hydra, and friends) and gets loud before you lose what's inside.
 
+![Dying at Phosani's Nightmare: the indicator appears, Sister Senga is marked as the
+claim point, and taking damage flashes an on-screen warning](docs/demo.gif)
+
+![Deathbank Utility tracking a Phosani's Nightmare deathbank](docs/demo.png)
+
 Items in a retrieval service are deleted on **any unsafe death anywhere** — a fact the
 game only mentions in an easily-missed login message. This plugin:
 
-- shows an **infobox** while a deathbank is (or may be) active, with an honest
-  confidence tier: *verified* (white) / *inferred* (yellow) / *unknown* (orange)
+- shows a **red indicator** while a deathbank is active, labelled with where it is
+  (ToB, Phosani, Zulrah, ...) and carrying an honest confidence tier: *verified*
+  (white) / *inferred* (yellow) / *unknown* (orange), with the details on hover
+- **highlights the claim point**, outlining the chest or NPC holding your items and
+  labelling it DEATHBANK
 - **remembers what went in** — estimated from your pre-death inventory, upgraded to
   exact contents whenever you open the retrieval interface
 - **reconciles at login**: if the game's retrieval warning is enabled and doesn't

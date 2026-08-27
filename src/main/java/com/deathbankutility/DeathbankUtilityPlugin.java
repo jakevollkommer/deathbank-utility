@@ -1,5 +1,6 @@
 package com.deathbankutility;
 
+import com.google.common.base.Strings;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.google.inject.Provides;
@@ -13,7 +14,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
@@ -79,11 +83,19 @@ public class DeathbankUtilityPlugin extends Plugin
 	private static final String MSG_DIED_AGAIN = "You have died again";
 	private static final String MSG_LOST_ITEMS = "lost the items";
 
-	// Zulrah has no retrieval interface — the priestess returns items through dialog
-	private static final String ZULRAH_DIALOG_LEFT_STUFF = "You left some stuff at Zulrah's shrine";
-	private static final String ZULRAH_DIALOG_HOLDING_STUFF = "I've got some stuff you left at the shrine";
-	private static final String ZULRAH_DIALOG_RETURNED = "I've returned it to you now";
-	private static final String ZULRAH_DIALOG_NOTHING = "I don't have anything for you to collect";
+	// Claim NPCs report the bank's state in dialog, and the wording is shared across
+	// them ("I don't have anything for you", "...to collect"), so the NPC's own name
+	// identifies the service and these generic phrases decide the state. Zulrah has
+	// no retrieval interface at all, so this is the only signal there.
+	private static final List<String> CLAIM_DIALOG_EMPTY = List.of(
+		"don't have anything for you",
+		"nothing for you to collect",
+		"returned it to you now");
+	private static final List<String> CLAIM_DIALOG_HOLDS = List.of(
+		"retrieved some of your items",
+		"have some of your items",
+		"got some stuff you left",
+		"left some stuff at");
 
 	// Deaths here never wipe a deathbank (list from zodaz/item-retrieval-warning, BSD-2)
 	private static final Set<Integer> SAFE_DEATH_REGIONS = Set.of(
@@ -107,14 +119,25 @@ public class DeathbankUtilityPlugin extends Plugin
 		12127, 7512, 7768 // Gauntlet (items never enter)
 	);
 
+	// Live game messages carry unresolved Jagex formatting macros, e.g.
+	// "@mes_hl_red@You have items stored in an item retrieval service...", which
+	// Text.removeTags leaves behind. One mid-phrase would break substring matching.
+	private static final Pattern MESSAGE_MACRO = Pattern.compile("@[a-zA-Z0-9_]+@");
+	// The interface reports what the player can see. After a discard the backing item
+	// container reads null rather than empty, so this text is the reliable source.
+	private static final Pattern WINDOW_STACK_COUNT = Pattern.compile("Stack count:\\s*([\\d,]+)");
+
 	private static final String STATE_KEY = "state";
 	private static final int LOGIN_RECONCILE_TICKS = 25;
 	private static final int DEATH_RESOLVE_MIN_TICKS = 3;
 	private static final int DEATH_RESOLVE_TIMEOUT_TICKS = 50;
 	private static final int DAMAGE_WARNING_DISPLAY_TICKS = 8;
-	// The retrieval window's title component; zodaz's plugin reads child 1, but
-	// gameval names it FRAME — TESTING.md B1 confirms which child holds the title
-	private static final int RETRIEVAL_WINDOW_TITLE_CHILD = 1;
+	// Emptying the bank (discard, or taking the last item) can close the window
+	// before the container update lands, so updates stay trusted briefly after close
+	private static final int RETRIEVAL_TRUST_GRACE_TICKS = 5;
+	// Depth of the widget tree walk used to find the retrieval window's location
+	// text; the interface has no TITLE component, so its texts are scanned instead
+	private static final int WINDOW_TEXT_DEPTH = 3;
 
 	@Inject
 	private Client client;
@@ -153,6 +176,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	private DeathbankPanel panel;
 	private NavigationButton navButton;
 	private boolean retrievalWindowOpen;
+	private int retrievalTrustTicksRemaining = -1;
 	private boolean graveWindowOpen;
 	private int loginReconcileTicksRemaining = -1;
 	private int lastDamageWarnTick = -1;
@@ -201,9 +225,21 @@ public class DeathbankUtilityPlugin extends Plugin
 		retrievalNpcs.clear();
 		retrievalWindowOpen = false;
 		graveWindowOpen = false;
+		retrievalTrustTicksRemaining = -1;
 		loginReconcileTicksRemaining = -1;
 		damageWarningUntilTick = -1;
 		clearPendingDeath();
+	}
+
+	/**
+	 * Saved state carried over from a previous session is not asserted until this
+	 * session confirms it. A real deathbank announces itself in the login message
+	 * within a tick or two; stale state is cleared by the reconcile instead of
+	 * being shown as a warning first.
+	 */
+	boolean isAwaitingLoginConfirmation()
+	{
+		return loginReconcileTicksRemaining >= 0 && state.getConfidence() == Confidence.UNKNOWN;
 	}
 
 	boolean isDamageWarningActive()
@@ -217,6 +253,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		if (event.getGameState() == GameState.LOGGING_IN)
 		{
 			loginReconcileTicksRemaining = LOGIN_RECONCILE_TICKS;
+			updatePanel();
 		}
 		if (event.getGameState() == GameState.LOADING)
 		{
@@ -294,11 +331,14 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 
-		String message = Text.removeTags(event.getMessage());
+		String message = sanitize(event.getMessage());
 		boolean confirmsBankExists = message.contains(MSG_RETRIEVAL_SERVICE) || message.contains(MSG_RETRIEVED_SOME);
 		if (confirmsBankExists)
 		{
-			markVerifiedActive(state.getService(), state.getWindowTitle());
+			// The message names where the items are, e.g. "...at the Theatre of Blood"
+			RetrievalService named = RetrievalService.fromName(message).orElse(state.getService());
+			log.debug("Retrieval service message: '{}' -> service {}", message, named);
+			markVerifiedActive(named, state.getWindowTitle());
 			return;
 		}
 
@@ -322,12 +362,14 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 		retrievalWindowOpen = true;
+		retrievalTrustTicksRemaining = -1;
 		clientThread.invokeLater(this::readRetrievalContainer);
 	}
 
 	@Subscribe
 	public void onWidgetClosed(WidgetClosed event)
 	{
+
 		if (event.getGroupId() == InterfaceID.GRAVESTONE_GENERIC)
 		{
 			graveWindowOpen = false;
@@ -335,6 +377,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		if (event.getGroupId() == InterfaceID.GRAVESTONE_RETRIEVAL)
 		{
 			retrievalWindowOpen = false;
+			retrievalTrustTicksRemaining = RETRIEVAL_TRUST_GRACE_TICKS;
 		}
 	}
 
@@ -347,12 +390,16 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 		// The same container backs overworld gravestones; only trust it as deathbank
 		// contents while the retrieval window (and not the grave window) is open
+		int itemCount = event.getItemContainer().count();
+		log.debug("Gravestone container update: {} items, retrievalWindowOpen={}, graveWindowOpen={}, graceTicks={}",
+			itemCount, retrievalWindowOpen, graveWindowOpen, retrievalTrustTicksRemaining);
+
 		if (graveWindowOpen)
 		{
-			log.debug("Ignoring gravestone container update ({} items)", event.getItemContainer().count());
 			return;
 		}
-		if (!retrievalWindowOpen)
+		boolean trustworthy = retrievalWindowOpen || retrievalTrustTicksRemaining >= 0;
+		if (!trustworthy)
 		{
 			return;
 		}
@@ -419,9 +466,30 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
+		tickRetrievalWindow();
 		tickPendingDeath();
 		tickLoginReconcile();
-		tickZulrahDialog();
+		tickClaimNpcDialog();
+	}
+
+	/**
+	 * Discarding the bank empties it without sending any container update or game
+	 * message, so the open window is polled rather than waited on. Reads after the
+	 * window closes are logged only, until it is known whether the client keeps the
+	 * container populated on close (an empty read would otherwise be ambiguous).
+	 */
+	private void tickRetrievalWindow()
+	{
+		if (retrievalWindowOpen)
+		{
+			readOpenRetrievalWindow();
+			return;
+		}
+		if (retrievalTrustTicksRemaining < 0)
+		{
+			return;
+		}
+		retrievalTrustTicksRemaining--;
 	}
 
 	// --- Post-death resolution: diff carried items before vs after respawn ---
@@ -462,8 +530,16 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 
-		log.debug("Death at {} resolved: ~{} stacks banked", service.getDisplayName(), banked.size());
-		transitionTo(DeathbankState.active(Confidence.INFERRED, service, null, banked, false));
+		// A message may already have confirmed the bank, and it names the service more
+		// precisely than the region can (Phosani's and the Nightmare share a region),
+		// so recording the items must not downgrade what is already known
+		boolean alreadyConfirmed = state.isActive() && state.getConfidence() == Confidence.VERIFIED;
+		Confidence confidence = alreadyConfirmed ? Confidence.VERIFIED : Confidence.INFERRED;
+		RetrievalService labelled = alreadyConfirmed && state.getService() != null ? state.getService() : service;
+
+		log.debug("Death at {} resolved: ~{} stacks banked, labelled {} ({})",
+			service.getDisplayName(), banked.size(), labelled, confidence);
+		transitionTo(DeathbankState.active(confidence, labelled, state.getWindowTitle(), banked, false));
 	}
 
 	private void clearPendingDeath()
@@ -508,53 +584,90 @@ public class DeathbankUtilityPlugin extends Plugin
 		transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
 	}
 
-	// --- Zulrah: dialog-only retrieval, no interface ---
+	// --- Claim NPC dialog: the only signal for Zulrah, and a reliable one everywhere ---
 
-	private void tickZulrahDialog()
+	private void tickClaimNpcDialog()
 	{
-		// Widget lookup first: it's a cheap null almost every tick, while the
-		// region check allocates instance-aware coordinates
-		Widget dialog = client.getWidget(InterfaceID.ChatLeft.TEXT);
-		if (dialog == null)
-		{
-			return;
-		}
-		if (!RetrievalService.ZULRAH.getClaimRegionIds().contains(currentRegionId()))
+		Widget dialogText = client.getWidget(InterfaceID.ChatLeft.TEXT);
+		if (dialogText == null)
 		{
 			return;
 		}
 
-		String text = Text.sanitizeMultilineText(dialog.getText());
-		boolean mentionsHeldItems = text.contains(ZULRAH_DIALOG_LEFT_STUFF) || text.contains(ZULRAH_DIALOG_HOLDING_STUFF);
-		if (mentionsHeldItems)
+		Widget dialogName = client.getWidget(InterfaceID.ChatLeft.NAME);
+		if (dialogName == null)
 		{
-			boolean itemsStillHeld = !text.contains(ZULRAH_DIALOG_RETURNED);
-			applyZulrahDialogState(itemsStillHeld);
 			return;
 		}
-		if (text.contains(ZULRAH_DIALOG_NOTHING))
+
+		// The NPC's own name tells us which service is speaking
+		Optional<RetrievalService> speaker = RetrievalService.fromName(sanitize(dialogName.getText()));
+		if (speaker.isEmpty())
 		{
-			applyZulrahDialogState(false);
+			return;
+		}
+
+		String text = sanitize(Text.sanitizeMultilineText(dialogText.getText()));
+		// Checked first: "I've got your stuff... I've returned it to you now" says both
+		if (matchesAny(text, CLAIM_DIALOG_EMPTY))
+		{
+			clearBankConfirmedEmpty(speaker.get());
+			return;
+		}
+		if (matchesAny(text, CLAIM_DIALOG_HOLDS))
+		{
+			markVerifiedActive(speaker.get(), null);
 		}
 	}
 
-	private void applyZulrahDialogState(boolean bankActive)
+	private void clearBankConfirmedEmpty(RetrievalService speaker)
 	{
-		// Fires every tick while the dialog is up; only act on an actual change
-		boolean alreadyCorrect = state.isActive() == bankActive && state.getConfidence() == Confidence.VERIFIED;
-		if (alreadyCorrect)
+		boolean nothingToClear = !state.isActive() && state.getConfidence() == Confidence.VERIFIED;
+		if (nothingToClear)
 		{
 			return;
 		}
-		if (bankActive)
-		{
-			markVerifiedActive(RetrievalService.ZULRAH, null);
-			return;
-		}
+		log.debug("{} reports an empty bank; clearing state", speaker);
 		transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
 	}
 
+	private static boolean matchesAny(String text, List<String> phrases)
+	{
+		String lowered = text.toLowerCase();
+		return phrases.stream().anyMatch(lowered::contains);
+	}
+
 	// --- Verified contents from the retrieval interface ---
+
+	/**
+	 * Discarding empties the bank without any container update or game message, and
+	 * leaves the container reading null while the interface still shows the result,
+	 * so the interface's own stack count decides whether anything is left.
+	 */
+	private void readOpenRetrievalWindow()
+	{
+		OptionalInt stackCount = readWindowStackCount();
+		boolean windowSaysEmpty = stackCount.isPresent() && stackCount.getAsInt() == 0;
+		if (windowSaysEmpty)
+		{
+			if (state.isActive())
+			{
+				log.debug("Retrieval interface reports 0 stacks; clearing deathbank");
+				transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
+			}
+			return;
+		}
+		readRetrievalContainer();
+	}
+
+	private OptionalInt readWindowStackCount()
+	{
+		return retrievalWindowTexts().stream()
+			.map(WINDOW_STACK_COUNT::matcher)
+			.filter(Matcher::find)
+			.mapToInt(matcher -> Integer.parseInt(matcher.group(1).replace(",", "")))
+			.findFirst();
+	}
 
 	private void readRetrievalContainer()
 	{
@@ -571,20 +684,70 @@ public class DeathbankUtilityPlugin extends Plugin
 		List<DeathbankState.ItemStack> stacks = toItemStacks(items);
 		if (stacks.isEmpty())
 		{
-			transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
+			if (state.isActive())
+			{
+				log.debug("Retrieval interface is empty; deathbank cleared");
+				transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
+			}
 			return;
 		}
 
-		String title = retrievalWindowTitle();
-		RetrievalService service = RetrievalService.fromName(title).orElse(state.getService());
-		log.debug("Verified deathbank contents: {} stacks, window title '{}'", stacks.size(), title);
-		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, title, stacks, true));
+		List<String> windowTexts = retrievalWindowTexts();
+		RetrievalService service = firstNamedService(windowTexts).orElse(state.getService());
+		boolean unchanged = state.isActive() && state.isItemsVerified()
+			&& state.getService() == service && stacks.equals(state.getItems());
+		if (unchanged)
+		{
+			return;
+		}
+
+		String locationText = service != null ? null : firstNonBlank(windowTexts).orElse(state.getWindowTitle());
+		log.debug("Verified deathbank contents: {} stacks, service {}, window texts {}", stacks.size(), service, windowTexts);
+		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, locationText, stacks, true));
 	}
 
-	private String retrievalWindowTitle()
+	/**
+	 * The retrieval interface has no title component, so collect the text from the
+	 * components that can name the location and let the caller match it.
+	 */
+	private List<String> retrievalWindowTexts()
 	{
-		Widget title = client.getWidget(InterfaceID.GRAVESTONE_RETRIEVAL, RETRIEVAL_WINDOW_TITLE_CHILD);
-		return title != null ? Text.removeTags(title.getText()) : null;
+		return Stream.of(InterfaceID.GravestoneRetrieval.INFO, InterfaceID.GravestoneRetrieval.FRAME)
+			.map(client::getWidget)
+			.filter(Objects::nonNull)
+			.flatMap(widget -> widgetTexts(widget, WINDOW_TEXT_DEPTH))
+			.distinct()
+			.collect(Collectors.toList());
+	}
+
+	private static Stream<String> widgetTexts(Widget widget, int depthRemaining)
+	{
+		String text = sanitize(Strings.nullToEmpty(widget.getText())).trim();
+		Stream<String> own = text.isEmpty() ? Stream.empty() : Stream.of(text);
+		if (depthRemaining <= 1)
+		{
+			return own;
+		}
+
+		Stream<Widget> children = Stream.of(widget.getStaticChildren(), widget.getDynamicChildren(), widget.getNestedChildren())
+			.filter(Objects::nonNull)
+			.flatMap(Arrays::stream)
+			.filter(Objects::nonNull);
+		return Stream.concat(own, children.flatMap(child -> widgetTexts(child, depthRemaining - 1)));
+	}
+
+	private static Optional<RetrievalService> firstNamedService(List<String> texts)
+	{
+		return texts.stream()
+			.map(RetrievalService::fromName)
+			.filter(Optional::isPresent)
+			.map(Optional::get)
+			.findFirst();
+	}
+
+	private static Optional<String> firstNonBlank(List<String> texts)
+	{
+		return texts.stream().filter(text -> !text.trim().isEmpty()).findFirst();
 	}
 
 	// --- State transitions: every change goes through this one door ---
@@ -605,7 +768,10 @@ public class DeathbankUtilityPlugin extends Plugin
 	private void markVerifiedActive(RetrievalService service, String windowTitle)
 	{
 		boolean alreadyVerifiedActive = state.isActive() && state.getConfidence() == Confidence.VERIFIED;
-		if (alreadyVerifiedActive)
+		// Phosani's and the Nightmare share a region, so a later message naming the
+		// specific service still has to be able to correct an already-verified label
+		boolean learnsService = service != null && service != state.getService();
+		if (alreadyVerifiedActive && !learnsService)
 		{
 			return;
 		}
@@ -627,7 +793,8 @@ public class DeathbankUtilityPlugin extends Plugin
 					stack.getQuantity(),
 					itemManager.getImage(stack.getId(), stack.getQuantity(), stack.getQuantity() > 1)))
 				.collect(Collectors.toList());
-			SwingUtilities.invokeLater(() -> panel.update(snapshot, items));
+			boolean awaitingConfirmation = isAwaitingLoginConfirmation();
+			SwingUtilities.invokeLater(() -> panel.update(snapshot, items, awaitingConfirmation));
 		});
 	}
 
@@ -674,6 +841,10 @@ public class DeathbankUtilityPlugin extends Plugin
 	private void saveState()
 	{
 		configManager.setRSProfileConfiguration(DeathbankUtilityConfig.GROUP, STATE_KEY, gson.toJson(state));
+		// Config is otherwise flushed on a timer and on clean shutdown, so a crash
+		// (or a killed client) loses the most recent state. Losing which items are in
+		// a deathbank is exactly what this plugin exists to prevent, so flush now.
+		configManager.sendConfig();
 	}
 
 	// --- Helpers ---
@@ -708,6 +879,11 @@ public class DeathbankUtilityPlugin extends Plugin
 			.filter(DeathbankUtilityPlugin::isRealItem)
 			.map(item -> new DeathbankState.ItemStack(item.getId(), item.getQuantity()))
 			.collect(Collectors.toList());
+	}
+
+	private static String sanitize(String text)
+	{
+		return MESSAGE_MACRO.matcher(Text.removeTags(text)).replaceAll("").trim();
 	}
 
 	private static boolean isRealItem(Item item)
