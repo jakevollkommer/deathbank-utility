@@ -3,6 +3,9 @@
 RuneLite plugin that tracks OSRS item retrieval services (deathbanks — Zulrah, Vorkath,
 Nex, ToB, ToA, Hydra, and friends) and gets loud before you lose what's inside.
 
+![Dying at Phosani's Nightmare: the indicator appears, Sister Senga is marked as the
+claim point, and taking damage flashes an on-screen warning](docs/demo.gif)
+
 ![Deathbank Utility tracking a Phosani's Nightmare deathbank](docs/demo.png)
 
 Items in a retrieval service are deleted on **any unsafe death anywhere** — a fact the
