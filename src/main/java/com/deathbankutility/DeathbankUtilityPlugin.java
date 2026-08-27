@@ -40,7 +40,6 @@ import net.runelite.api.events.GameTick;
 import net.runelite.api.events.HitsplatApplied;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuOptionClicked;
-import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.NpcDespawned;
 import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.WidgetClosed;
@@ -124,6 +123,9 @@ public class DeathbankUtilityPlugin extends Plugin
 	// Text.removeTags leaves behind. One mid-phrase would break substring matching.
 	private static final Pattern MESSAGE_MACRO = Pattern.compile("@[a-zA-Z0-9_]+@");
 
+	// Observed ticking every second regardless of player action
+	private static final Set<Integer> AMBIENT_VARPS = Set.of(3077, 3079, 3883, 1057, 1682, 1683, 243, 1668);
+
 	private static final String STATE_KEY = "state";
 	private static final int LOGIN_RECONCILE_TICKS = 25;
 	private static final int DEATH_RESOLVE_MIN_TICKS = 3;
@@ -174,6 +176,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	private NavigationButton navButton;
 	private boolean retrievalWindowOpen;
 	private int retrievalTrustTicksRemaining = -1;
+	private int[] varpsWhenWindowOpened;
 	private boolean graveWindowOpen;
 	private int loginReconcileTicksRemaining = -1;
 	private int lastDamageWarnTick = -1;
@@ -353,9 +356,9 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded event)
 	{
-		if (log.isDebugEnabled() && isNearRetrievalWindow())
+		if (log.isDebugEnabled() && retrievalWindowOpen)
 		{
-			log.debug("Interface {} opened near retrieval window", event.getGroupId());
+			log.debug("Interface {} opened over the retrieval window", event.getGroupId());
 		}
 		if (event.getGroupId() == InterfaceID.GRAVESTONE_GENERIC)
 		{
@@ -368,16 +371,14 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 		retrievalWindowOpen = true;
 		retrievalTrustTicksRemaining = -1;
+		varpsWhenWindowOpened = log.isDebugEnabled() ? client.getVarps().clone() : null;
 		clientThread.invokeLater(this::readRetrievalContainer);
 	}
 
 	@Subscribe
 	public void onWidgetClosed(WidgetClosed event)
 	{
-		if (log.isDebugEnabled() && isNearRetrievalWindow())
-		{
-			log.debug("Interface {} closed near retrieval window", event.getGroupId());
-		}
+
 		if (event.getGroupId() == InterfaceID.GRAVESTONE_GENERIC)
 		{
 			graveWindowOpen = false;
@@ -386,6 +387,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		{
 			retrievalWindowOpen = false;
 			retrievalTrustTicksRemaining = RETRIEVAL_TRUST_GRACE_TICKS;
+			logVarpsChangedWhileWindowOpen();
 		}
 	}
 
@@ -478,6 +480,32 @@ public class DeathbankUtilityPlugin extends Plugin
 
 	// --- Temporary diagnostics for the discard path (debug level, dev launches only) ---
 
+	/**
+	 * Which varps moved while the retrieval interface was open. Ambient counters are
+	 * excluded because they tick every second regardless of what the player does.
+	 */
+	private void logVarpsChangedWhileWindowOpen()
+	{
+		if (varpsWhenWindowOpened == null)
+		{
+			return;
+		}
+
+		int[] now = client.getVarps();
+		StringBuilder changed = new StringBuilder();
+		for (int varp = 0; varp < Math.min(now.length, varpsWhenWindowOpened.length); varp++)
+		{
+			boolean moved = now[varp] != varpsWhenWindowOpened[varp];
+			if (moved && !AMBIENT_VARPS.contains(varp))
+			{
+				changed.append(' ').append(varp).append('=').append(varpsWhenWindowOpened[varp])
+					.append("->").append(now[varp]);
+			}
+		}
+		varpsWhenWindowOpened = null;
+		log.debug("Varps changed while retrieval window was open:{}", changed.length() == 0 ? " none" : changed);
+	}
+
 	private boolean isNearRetrievalWindow()
 	{
 		return retrievalWindowOpen || retrievalTrustTicksRemaining >= 0;
@@ -493,17 +521,6 @@ public class DeathbankUtilityPlugin extends Plugin
 		log.debug("Click while retrieval window open: option='{}' target='{}' action={} param0={} param1={}",
 			event.getMenuOption(), Text.removeTags(event.getMenuTarget()), event.getMenuAction(),
 			event.getParam0(), event.getParam1());
-	}
-
-	@Subscribe
-	public void onVarbitChanged(VarbitChanged event)
-	{
-		if (!log.isDebugEnabled() || !isNearRetrievalWindow())
-		{
-			return;
-		}
-		log.debug("Var change near retrieval window: varbit={} varp={} value={}",
-			event.getVarbitId(), event.getVarpId(), event.getValue());
 	}
 
 	@Subscribe
@@ -533,10 +550,6 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 		retrievalTrustTicksRemaining--;
-
-		ItemContainer container = client.getItemContainer(InventoryID.GRAVESTONE);
-		log.debug("Post-close container read: {}, graceTicks={}",
-			container == null ? "null" : container.count() + " items", retrievalTrustTicksRemaining);
 	}
 
 	// --- Post-death resolution: diff carried items before vs after respawn ---
