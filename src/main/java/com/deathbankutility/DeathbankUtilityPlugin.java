@@ -119,6 +119,9 @@ public class DeathbankUtilityPlugin extends Plugin
 	private static final int DEATH_RESOLVE_MIN_TICKS = 3;
 	private static final int DEATH_RESOLVE_TIMEOUT_TICKS = 50;
 	private static final int DAMAGE_WARNING_DISPLAY_TICKS = 8;
+	// Emptying the bank (discard, or taking the last item) can close the window
+	// before the container update lands, so updates stay trusted briefly after close
+	private static final int RETRIEVAL_TRUST_GRACE_TICKS = 5;
 	// Depth of the widget tree walk used to find the retrieval window's location
 	// text; the interface has no TITLE component, so its texts are scanned instead
 	private static final int WINDOW_TEXT_DEPTH = 3;
@@ -160,6 +163,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	private DeathbankPanel panel;
 	private NavigationButton navButton;
 	private boolean retrievalWindowOpen;
+	private int retrievalTrustTicksRemaining = -1;
 	private boolean graveWindowOpen;
 	private int loginReconcileTicksRemaining = -1;
 	private int lastDamageWarnTick = -1;
@@ -208,6 +212,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		retrievalNpcs.clear();
 		retrievalWindowOpen = false;
 		graveWindowOpen = false;
+		retrievalTrustTicksRemaining = -1;
 		loginReconcileTicksRemaining = -1;
 		damageWarningUntilTick = -1;
 		clearPendingDeath();
@@ -314,6 +319,10 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 
 		String message = sanitize(event.getMessage());
+		if (state.isActive())
+		{
+			log.debug("Game message while deathbank tracked: '{}'", message);
+		}
 		boolean confirmsBankExists = message.contains(MSG_RETRIEVAL_SERVICE) || message.contains(MSG_RETRIEVED_SOME);
 		if (confirmsBankExists)
 		{
@@ -344,6 +353,7 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 		retrievalWindowOpen = true;
+		retrievalTrustTicksRemaining = -1;
 		clientThread.invokeLater(this::readRetrievalContainer);
 	}
 
@@ -357,6 +367,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		if (event.getGroupId() == InterfaceID.GRAVESTONE_RETRIEVAL)
 		{
 			retrievalWindowOpen = false;
+			retrievalTrustTicksRemaining = RETRIEVAL_TRUST_GRACE_TICKS;
 		}
 	}
 
@@ -369,12 +380,16 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 		// The same container backs overworld gravestones; only trust it as deathbank
 		// contents while the retrieval window (and not the grave window) is open
+		int itemCount = event.getItemContainer().count();
+		log.debug("Gravestone container update: {} items, retrievalWindowOpen={}, graveWindowOpen={}, graceTicks={}",
+			itemCount, retrievalWindowOpen, graveWindowOpen, retrievalTrustTicksRemaining);
+
 		if (graveWindowOpen)
 		{
-			log.debug("Ignoring gravestone container update ({} items)", event.getItemContainer().count());
 			return;
 		}
-		if (!retrievalWindowOpen)
+		boolean trustworthy = retrievalWindowOpen || retrievalTrustTicksRemaining >= 0;
+		if (!trustworthy)
 		{
 			return;
 		}
@@ -441,9 +456,18 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
+		tickRetrievalTrust();
 		tickPendingDeath();
 		tickLoginReconcile();
 		tickZulrahDialog();
+	}
+
+	private void tickRetrievalTrust()
+	{
+		if (retrievalTrustTicksRemaining >= 0)
+		{
+			retrievalTrustTicksRemaining--;
+		}
 	}
 
 	// --- Post-death resolution: diff carried items before vs after respawn ---

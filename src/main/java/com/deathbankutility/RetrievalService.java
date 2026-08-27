@@ -22,6 +22,7 @@ public enum RetrievalService
 {
 	// Claim point: Priestess Zul-Gwenwynig in Zul-Andra, dialog only (no interface)
 	ZULRAH("Zulrah", "Zulrah", "100k (free under 50 KC, always free for UIM)",
+		Set.of("zul-gwenwynig", "zulrah's shrine"),
 		ids(9007, 9008),
 		ids(8495, 8751),
 		ids(),
@@ -29,6 +30,7 @@ public enum RetrievalService
 
 	// Claim point: Torfinn on Ungael or in Rellekka
 	VORKATH("Vorkath", "Vorkath", "100k",
+		Set.of("torfinn"),
 		ids(9023),
 		ids(),
 		ids(),
@@ -38,6 +40,7 @@ public enum RetrievalService
 
 	// Claim point: chest past the frozen door
 	NEX("Nex", "Nex", "100k",
+		Set.of(),
 		ids(11601),
 		ids(),
 		ids(42854, 42858), // NEX_GRAVESTONE_CHEST (+_NOOP), gameval class is package-private
@@ -45,6 +48,7 @@ public enum RetrievalService
 
 	// Claim point: chest north of the Ver Sinhaza bank
 	THEATRE_OF_BLOOD("Theatre of Blood", "ToB", "100k (free in Entry Mode)",
+		Set.of(),
 		ids(12611, 12612, 12613, 12867, 12869, 13122, 13123, 13125, 13379),
 		ids(),
 		ids(32656), // TOB_SURFACE_GRAVESTONE_CHEST
@@ -52,6 +56,7 @@ public enum RetrievalService
 
 	// Claim point: lobby chest
 	TOMBS_OF_AMASCUT("Tombs of Amascut", "ToA", "GE-based, up to 500k",
+		Set.of(),
 		ids(14160, 14162, 14164, 14674, 14676, 15184, 15186, 15188, 15696, 15698, 15700),
 		ids(),
 		ids(46078, 46079), // TOA_LOBBY_GRAVESTONE_CHEST (+_NOOP)
@@ -59,6 +64,7 @@ public enum RetrievalService
 
 	// Claim point: Orrvor quo Maten
 	ALCHEMICAL_HYDRA("Alchemical Hydra", "Hydra", "100k",
+		Set.of("orrvor"),
 		ids(5536),
 		ids(),
 		ids(),
@@ -66,6 +72,7 @@ public enum RetrievalService
 
 	// Claim point: magical chest outside the roof entrance
 	GROTESQUE_GUARDIANS("Grotesque Guardians", "Gargs", "50k",
+		Set.of("grotesque guardian"),
 		ids(6727),
 		ids(),
 		ids(ObjectID.GARGBOSS_GRAVESTONE_RETRIEVAL),
@@ -75,6 +82,7 @@ public enum RetrievalService
 	// NIGHTMARE and only corrected once the retrieval window or a game message
 	// names Phosani's. Declared first so its name wins the text match.
 	PHOSANI("Phosani's Nightmare", "Phosani", "60k",
+		Set.of("sister senga"),
 		ids(),
 		ids(),
 		ids(),
@@ -82,6 +90,7 @@ public enum RetrievalService
 
 	// Claim point: Shura
 	NIGHTMARE("The Nightmare", "Nightmare", "60k",
+		Set.of("shura"),
 		ids(15515),
 		ids(),
 		ids(),
@@ -89,6 +98,7 @@ public enum RetrievalService
 
 	// Claim point: Mysterious Stranger in the lobby
 	HALLOWED_SEPULCHRE("Hallowed Sepulchre", "Sepulchre", "25k",
+		Set.of("mysterious stranger"),
 		ids(8797, 9051, 9052, 9053, 9054, 9309, 9563, 9565, 9821, 10074, 10075, 10077),
 		ids(),
 		ids(),
@@ -96,6 +106,7 @@ public enum RetrievalService
 
 	// Claim point: Arno at the Farming Guild
 	HESPORI("Hespori", "Hespori", "25k",
+		Set.of("arno"),
 		ids(5021),
 		ids(),
 		ids(),
@@ -103,6 +114,7 @@ public enum RetrievalService
 
 	// Claim point: Petrified Pete
 	VOLCANIC_MINE("Volcanic Mine", "Volc Mine", "150 numulite",
+		Set.of("petrified pete"),
 		ids(15263, 15262),
 		ids(),
 		ids(),
@@ -111,6 +123,7 @@ public enum RetrievalService
 	// Instanced; death region unconfirmed — deaths there are still caught by
 	// chat/interface signals. Claim point: the Strange casket
 	THE_MIMIC("The Mimic", "Mimic", "90k",
+		Set.of("strange casket"),
 		ids(),
 		ids(),
 		ids(34733), // TRAIL_MIMIC_ENABLER
@@ -119,6 +132,14 @@ public enum RetrievalService
 	private final String displayName;
 	private final String shortName;
 	private final String feeText;
+	/**
+	 * Lowercase phrases that identify this service in game text. Death and login
+	 * messages often name the claim NPC or place rather than the boss, e.g.
+	 * "Shura has retrieved some of your items ... in the Sisterhood Sanctuary".
+	 * Ambiguous phrases are deliberately excluded ("magical chest" is used by
+	 * both the Theatre of Blood and Grotesque Guardians messages).
+	 */
+	private final Set<String> nameAliases;
 	/** Regions where an unsafe death routes items into this service. */
 	private final Set<Integer> deathRegionIds;
 	/** Regions where claiming happens outside an interface (Zulrah's dialog). */
@@ -148,8 +169,14 @@ public enum RetrievalService
 		}
 		String lowered = name.toLowerCase();
 		return Arrays.stream(values())
-			.filter(service -> lowered.contains(service.displayName.toLowerCase()))
+			.filter(service -> service.isNamedIn(lowered))
 			.findFirst();
+	}
+
+	private boolean isNamedIn(String loweredText)
+	{
+		return loweredText.contains(displayName.toLowerCase())
+			|| nameAliases.stream().anyMatch(loweredText::contains);
 	}
 
 	static boolean isClaimObject(int objectId)

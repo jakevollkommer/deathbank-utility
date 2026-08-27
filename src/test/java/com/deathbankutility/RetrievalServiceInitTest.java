@@ -25,5 +25,12 @@ public class RetrievalServiceInitTest
 		assertEquals(RetrievalService.PHOSANI, RetrievalService.fromName("Phosani's Nightmare Item Retrieval Service").orElse(null));
 		assertEquals(RetrievalService.NIGHTMARE, RetrievalService.fromName("The Nightmare Item Retrieval Service").orElse(null));
 		assertEquals(RetrievalService.NIGHTMARE, RetrievalService.fromRegion(15515).orElse(null));
+		// Observed in game: window titles and death messages name the claim NPC,
+		// not the boss, so aliases have to resolve them
+		assertEquals(RetrievalService.NIGHTMARE, RetrievalService.fromName("Shura's Item Retrieval Service").orElse(null));
+		assertEquals(RetrievalService.NIGHTMARE, RetrievalService.fromName(
+			"Shura has retrieved some of your items. You can collect them from her in the Sisterhood Sanctuary.").orElse(null));
+		assertEquals(RetrievalService.VORKATH, RetrievalService.fromName("Torfinn's Item Retrieval Service").orElse(null));
+		assertEquals(RetrievalService.HESPORI, RetrievalService.fromName("Arno's Item Retrieval Service").orElse(null));
 	}
 }
