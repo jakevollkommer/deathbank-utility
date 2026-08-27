@@ -456,18 +456,34 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		tickRetrievalTrust();
+		tickRetrievalWindow();
 		tickPendingDeath();
 		tickLoginReconcile();
 		tickZulrahDialog();
 	}
 
-	private void tickRetrievalTrust()
+	/**
+	 * Discarding the bank empties it without sending any container update or game
+	 * message, so the open window is polled rather than waited on. Reads after the
+	 * window closes are logged only, until it is known whether the client keeps the
+	 * container populated on close (an empty read would otherwise be ambiguous).
+	 */
+	private void tickRetrievalWindow()
 	{
-		if (retrievalTrustTicksRemaining >= 0)
+		if (retrievalWindowOpen)
 		{
-			retrievalTrustTicksRemaining--;
+			readRetrievalContainer();
+			return;
 		}
+		if (retrievalTrustTicksRemaining < 0)
+		{
+			return;
+		}
+		retrievalTrustTicksRemaining--;
+
+		ItemContainer container = client.getItemContainer(InventoryID.GRAVESTONE);
+		log.debug("Post-close container read: {}, graceTicks={}",
+			container == null ? "null" : container.count() + " items", retrievalTrustTicksRemaining);
 	}
 
 	// --- Post-death resolution: diff carried items before vs after respawn ---
@@ -625,12 +641,23 @@ public class DeathbankUtilityPlugin extends Plugin
 		List<DeathbankState.ItemStack> stacks = toItemStacks(items);
 		if (stacks.isEmpty())
 		{
-			transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
+			if (state.isActive())
+			{
+				log.debug("Retrieval interface is empty; deathbank cleared");
+				transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
+			}
 			return;
 		}
 
 		List<String> windowTexts = retrievalWindowTexts();
 		RetrievalService service = firstNamedService(windowTexts).orElse(state.getService());
+		boolean unchanged = state.isActive() && state.isItemsVerified()
+			&& state.getService() == service && stacks.equals(state.getItems());
+		if (unchanged)
+		{
+			return;
+		}
+
 		String locationText = service != null ? null : firstNonBlank(windowTexts).orElse(state.getWindowTitle());
 		log.debug("Verified deathbank contents: {} stacks, service {}, window texts {}", stacks.size(), service, windowTexts);
 		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, locationText, stacks, true));

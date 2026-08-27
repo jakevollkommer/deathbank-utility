@@ -70,9 +70,11 @@ class DeathbankPanel extends PluginPanel
 		disclaimer.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
 		disclaimer.setVerticalAlignment(SwingConstants.TOP);
 
-		JPanel footer = new JPanel(new BorderLayout());
+		// Same container type as the header: BorderLayout let the disclaimer force the
+		// panel wider than the viewport, which clipped every label on the right
+		JPanel footer = new JPanel(new GridLayout(0, 1));
 		footer.setBorder(BorderFactory.createEmptyBorder(12, 0, 0, 0));
-		footer.add(disclaimer, BorderLayout.CENTER);
+		footer.add(disclaimer);
 		footer.setAlignmentX(LEFT_ALIGNMENT);
 
 		header.setAlignmentX(LEFT_ALIGNMENT);
