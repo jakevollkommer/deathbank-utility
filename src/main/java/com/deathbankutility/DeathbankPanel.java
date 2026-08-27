@@ -31,8 +31,9 @@ class DeathbankPanel extends PluginPanel
 	}
 
 	private static final int ITEMS_PER_ROW = 5;
-	// Panel width less the 10px borders on each side, so HTML wraps inside the panel
-	private static final int TEXT_WRAP_WIDTH = PANEL_WIDTH - 25;
+	// Panel width less our borders, and less the margins Swing's HTML body adds on
+	// top of the declared width, which is what pushed text past the panel edge
+	private static final int TEXT_WRAP_WIDTH = PANEL_WIDTH - 45;
 
 	private final JLabel statusLabel = new JLabel();
 	private final JLabel detailLabel = new JLabel();
@@ -62,10 +63,9 @@ class DeathbankPanel extends PluginPanel
 
 		// BoxLayout will not stretch a bare JLabel, so the disclaimer needs a
 		// full-width wrapper and an explicit wrap width to align with the rest
-		JLabel disclaimer = new JLabel("<html><body style='width:" + TEXT_WRAP_WIDTH + "px'>"
-			+ "Early release: tracking can be wrong. Never treat a missing warning as proof you have "
-			+ "no deathbank. Report bugs and request features from the plugin config's Feedback section."
-			+ "</body></html>");
+		JLabel disclaimer = new JLabel(wrapped("Early release: tracking can be wrong. Never treat a missing "
+			+ "warning as proof you have no deathbank. Report bugs and request features from the plugin "
+			+ "config's Feedback section."));
 		disclaimer.setFont(FontManager.getRunescapeSmallFont());
 		disclaimer.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
 		disclaimer.setVerticalAlignment(SwingConstants.TOP);
@@ -118,7 +118,7 @@ class DeathbankPanel extends PluginPanel
 
 	private static String wrapped(String text)
 	{
-		return "<html><body style='width:" + TEXT_WRAP_WIDTH + "px'>" + text + "</body></html>";
+		return "<html><body style='margin:0;width:" + TEXT_WRAP_WIDTH + "px'>" + text + "</body></html>";
 	}
 
 	private static String describeStacks(int stackCount)

@@ -95,7 +95,7 @@ public interface DeathbankUtilityConfig extends Config
 	// no editor, so this row shows as read-only text.
 	@ConfigItem(
 		keyName = "earlyReleaseNotice",
-		name = "<html><body style='width:180px'>Early release: not feature complete, and tracking can be "
+		name = "<html><body style='margin:0;width:165px'>Early release: not feature complete, and tracking can be "
 			+ "wrong. Never treat a missing warning as proof you have no deathbank. Bug reports and "
 			+ "feature requests are very welcome.</body></html>",
 		description = "",

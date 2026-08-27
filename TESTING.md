@@ -40,8 +40,12 @@ budget test dummy for anything requiring a real death. Check items off per build
 - [ ] **B1 — Contents verified on open.** Open the retrieval chest (Hespori → Arno).
       Item count in the indicator switches from `~N` yellow to exact `N` white
       (*verified*), and the side panel item grid matches the chest exactly. Debug
-      log prints the window title — **record the title text per service here**
-      (it's how we'll label which bank without region math).
+      ✅ **CAPTURED 2026-08-27 (ToB)**: the interface has no title component, so the
+      plugin scans INFO and FRAME text. Observed texts:
+      `Stack count: 1Guide value: 1,444 (approximately)` and
+      `Theatre of Blood Item Retrieval Service`. The second names the service, so
+      matching on it identifies the bank without region math. Capture the equivalent
+      string for the other services as they come up.
 - [ ] **B2 — Partial withdrawal tracked.** Take some items out while the window is
       open; count updates live.
 - [ ] **B3 — Emptying clears state.** Withdraw everything; infobox disappears and
@@ -99,7 +103,7 @@ budget test dummy for anything requiring a real death. Check items off per build
 |---|---|---|
 | Exact login warning text | A1 | ☑ captured, see A1 |
 | Exact died-again wipe message text | A6 | ☐ |
-| Retrieval window title per service | B1, each service | ☐ |
+| Retrieval window title per service | B1, each service | ☑ ToB captured, others pending |
 | Grave vs deathbank widget group IDs | B4, widget inspector | ☐ |
 | Chest/NPC object IDs per service (for phase 2 recoloring) | dev tools object inspector at each chest | ☐ |
 | Whether The Mimic / quest services hit the region fallback | die there (cheap quest replays not possible — low priority) | ☐ |

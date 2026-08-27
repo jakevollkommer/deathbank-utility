@@ -26,6 +26,8 @@ class DeathbankIndicatorOverlay extends Overlay
 	private static final int BOX_SIZE = 40;
 	private static final Dimension BOX_DIMENSION = new Dimension(BOX_SIZE, BOX_SIZE);
 	private static final int LABEL_HEIGHT = 14;
+	// Bottom-left corner of the box is plain background, clear of the skull
+	private static final int COUNT_INSET = 3;
 
 	private final Client client;
 	private final DeathbankUtilityPlugin plugin;
@@ -53,17 +55,15 @@ class DeathbankIndicatorOverlay extends Overlay
 			return null;
 		}
 
+		// The component centers its caption over the icon, where the pale skull
+		// swallows it, so the count is drawn separately in the clear corner
 		InfoBoxComponent box = new InfoBoxComponent();
 		box.setImage(plugin.getIndicatorIcon());
-		box.setText(countText(state));
-		box.setColor(state.getConfidence().getColor());
 		box.setBackgroundColor(BACKGROUND);
-		box.setFont(FontManager.getRunescapeBoldFont());
-		// The skull icon is pale, so the count needs an outline to stay legible over it
-		box.setOutline(true);
 		box.setPreferredSize(BOX_DIMENSION);
 		box.render(graphics);
 
+		renderCount(graphics, countText(state), state.getConfidence().getColor());
 		renderLocationLabel(graphics, state.shortLabel());
 		addTooltipWhenHovered(box.getBounds(), state);
 		return new Dimension(BOX_SIZE, BOX_SIZE + LABEL_HEIGHT);
@@ -106,6 +106,18 @@ class DeathbankIndicatorOverlay extends Overlay
 		String basis = state.isItemsVerified() ? "verified" : "estimated";
 		String qualifier = state.isItemsVerified() ? "" : "~";
 		return qualifier + stackCount + " " + itemWord + " (" + basis + ")";
+	}
+
+	private static void renderCount(Graphics2D graphics, String count, Color color)
+	{
+		graphics.setFont(FontManager.getRunescapeBoldFont());
+
+		TextComponent text = new TextComponent();
+		text.setText(count);
+		text.setColor(color);
+		text.setOutline(true);
+		text.setPosition(new Point(COUNT_INSET, BOX_SIZE - COUNT_INSET));
+		text.render(graphics);
 	}
 
 	private static void renderLocationLabel(Graphics2D graphics, String label)
