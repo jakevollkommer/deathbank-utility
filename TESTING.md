@@ -46,6 +46,19 @@ budget test dummy for anything requiring a real death. Check items off per build
       `Theatre of Blood Item Retrieval Service`. The second names the service, so
       matching on it identifies the bank without region math. Capture the equivalent
       string for the other services as they come up.
+
+      **Confirmed naming rule (2026-08-27):** window titles and death messages are
+      named after the *claim NPC*, not the boss, for NPC-based services. Captured:
+
+      | Service | Window title | Death message |
+      |---|---|---|
+      | Theatre of Blood | `Theatre of Blood Item Retrieval Service` | login: `...visit the magical chest outside the Theatre of Blood...` |
+      | The Nightmare | `Shura's Item Retrieval Service` | `Shura has retrieved some of your items. You can collect them from her in the Sisterhood Sanctuary.` |
+      | Phosani's Nightmare | `Sister Senga's Item Retrieval Service` | `Sister Senga has retrieved some of your items. You can collect them from her in the Sisterhood Sanctuary.` |
+
+      This is why `RetrievalService` carries name aliases. It also confirms the wiki
+      mapping: regular Nightmare uses Shura, Phosani's uses Sister Senga, and the two
+      are only distinguishable from this text (they share region 15515).
 - [ ] **B2 — Partial withdrawal tracked.** Take some items out while the window is
       open; count updates live.
 - [ ] **B3 — Emptying clears state.** Withdraw everything; infobox disappears and
@@ -117,4 +130,5 @@ budget test dummy for anything requiring a real death. Check items off per build
 | Retrieval window title per service | B1, each service | ☑ ToB captured, others pending |
 | Grave vs deathbank widget group IDs | B4, widget inspector | ☐ |
 | Chest/NPC object IDs per service (for phase 2 recoloring) | dev tools object inspector at each chest | ☐ |
+| Discard path: does emptying via Discard close the window before the container update? | live discard test, watch the grace-tick log | ☐ |
 | Whether The Mimic / quest services hit the region fallback | die there (cheap quest replays not possible — low priority) | ☐ |
