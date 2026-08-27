@@ -1,6 +1,7 @@
 package com.deathbankutility;
 
 import java.awt.Color;
+import java.time.Instant;
 import net.runelite.client.config.Alpha;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
@@ -89,12 +90,29 @@ public interface DeathbankUtilityConfig extends Config
 	)
 	String feedbackSection = "feedbackSection";
 
+	// ConfigPanel renders a label for every config item but only builds an editor
+	// for the types it knows about. Instant is stored fine by ConfigManager and has
+	// no editor, so this row shows as read-only text.
+	@ConfigItem(
+		keyName = "earlyReleaseNotice",
+		name = "<html><body style='width:180px'>Early release: not feature complete, and tracking can be "
+			+ "wrong. Never treat a missing warning as proof you have no deathbank. Bug reports and "
+			+ "feature requests are very welcome.</body></html>",
+		description = "",
+		section = feedbackSection,
+		position = 0
+	)
+	default Instant earlyReleaseNotice()
+	{
+		return Instant.EPOCH;
+	}
+
 	@ConfigItem(
 		keyName = "suggestButton",
 		name = "Report a bug or idea",
 		description = "Found a bug or have a feature request? Click the box to open the GitHub issues page",
 		section = feedbackSection,
-		position = 0
+		position = 1
 	)
 	default boolean suggestButton()
 	{
@@ -106,7 +124,7 @@ public interface DeathbankUtilityConfig extends Config
 		name = "Buy me a coffee ❤",
 		description = "Enjoying the plugin? Click the box to open the Ko-fi page",
 		section = feedbackSection,
-		position = 1
+		position = 2
 	)
 	default boolean supportButton()
 	{

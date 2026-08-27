@@ -8,6 +8,7 @@ import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.SwingConstants;
 import lombok.RequiredArgsConstructor;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
@@ -30,6 +31,8 @@ class DeathbankPanel extends PluginPanel
 	}
 
 	private static final int ITEMS_PER_ROW = 5;
+	// Panel width less the 10px borders on each side, so HTML wraps inside the panel
+	private static final int TEXT_WRAP_WIDTH = PANEL_WIDTH - 25;
 
 	private final JLabel statusLabel = new JLabel();
 	private final JLabel detailLabel = new JLabel();
@@ -57,16 +60,27 @@ class DeathbankPanel extends PluginPanel
 		JPanel gridWrapper = new JPanel(new BorderLayout());
 		gridWrapper.add(itemGrid, BorderLayout.NORTH);
 
-		JLabel disclaimer = new JLabel("<html>Early release: tracking can be wrong. Never treat a missing "
-			+ "warning as proof you have no deathbank. "
-			+ "Report bugs and request features from the plugin config's Feedback section.</html>");
+		// BoxLayout will not stretch a bare JLabel, so the disclaimer needs a
+		// full-width wrapper and an explicit wrap width to align with the rest
+		JLabel disclaimer = new JLabel("<html><body style='width:" + TEXT_WRAP_WIDTH + "px'>"
+			+ "Early release: tracking can be wrong. Never treat a missing warning as proof you have "
+			+ "no deathbank. Report bugs and request features from the plugin config's Feedback section."
+			+ "</body></html>");
 		disclaimer.setFont(FontManager.getRunescapeSmallFont());
 		disclaimer.setForeground(ColorScheme.MEDIUM_GRAY_COLOR);
-		disclaimer.setBorder(BorderFactory.createEmptyBorder(12, 0, 0, 0));
+		disclaimer.setVerticalAlignment(SwingConstants.TOP);
+
+		JPanel footer = new JPanel(new BorderLayout());
+		footer.setBorder(BorderFactory.createEmptyBorder(12, 0, 0, 0));
+		footer.add(disclaimer, BorderLayout.CENTER);
+		footer.setAlignmentX(LEFT_ALIGNMENT);
+
+		header.setAlignmentX(LEFT_ALIGNMENT);
+		gridWrapper.setAlignmentX(LEFT_ALIGNMENT);
 
 		add(header);
 		add(gridWrapper);
-		add(disclaimer);
+		add(footer);
 
 		showInactive();
 	}
@@ -79,10 +93,10 @@ class DeathbankPanel extends PluginPanel
 			return;
 		}
 
-		statusLabel.setText("<html>Deathbank active: " + state.displayLabel() + "</html>");
+		statusLabel.setText(wrapped("Deathbank active: " + state.displayLabel()));
 		statusLabel.setForeground(ColorScheme.PROGRESS_ERROR_COLOR);
-		detailLabel.setText("<html>Confidence: " + state.getConfidence().getLabel()
-			+ ". Any unsafe death anywhere deletes these items." + feeSentence(state) + "</html>");
+		detailLabel.setText(wrapped("Confidence: " + state.getConfidence().getLabel()
+			+ ". Any unsafe death anywhere deletes these items." + feeSentence(state)));
 		contentsLabel.setText(contentsText(state, items));
 
 		itemGrid.removeAll();
@@ -95,11 +109,21 @@ class DeathbankPanel extends PluginPanel
 	{
 		statusLabel.setText("No active deathbank");
 		statusLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		detailLabel.setText("<html>Die at content with an item retrieval service and it will show up here.</html>");
+		detailLabel.setText(wrapped("Die at content with an item retrieval service and it will show up here."));
 		contentsLabel.setText("");
 		itemGrid.removeAll();
 		itemGrid.revalidate();
 		itemGrid.repaint();
+	}
+
+	private static String wrapped(String text)
+	{
+		return "<html><body style='width:" + TEXT_WRAP_WIDTH + "px'>" + text + "</body></html>";
+	}
+
+	private static String describeStacks(int stackCount)
+	{
+		return stackCount + (stackCount == 1 ? " item stack." : " item stacks.");
 	}
 
 	private static String feeSentence(DeathbankState state)
@@ -115,12 +139,12 @@ class DeathbankPanel extends PluginPanel
 	{
 		if (items.isEmpty())
 		{
-			return "Contents unknown — open the retrieval chest to verify.";
+			return wrapped("Contents unknown, open the retrieval chest to verify.");
 		}
 		String basis = state.isItemsVerified()
 			? "Verified from the retrieval interface:"
 			: "Estimated from your gear at death:";
-		return "<html>" + basis + " " + items.size() + " item stacks.</html>";
+		return wrapped(basis + " " + describeStacks(items.size()));
 	}
 
 	private static JLabel buildItemCell(PanelItem item)

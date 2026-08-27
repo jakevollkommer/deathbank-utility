@@ -301,6 +301,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		{
 			// The message names where the items are, e.g. "...at the Theatre of Blood"
 			RetrievalService named = RetrievalService.fromName(message).orElse(state.getService());
+			log.debug("Retrieval service message: '{}' -> service {}", message, named);
 			markVerifiedActive(named, state.getWindowTitle());
 			return;
 		}
