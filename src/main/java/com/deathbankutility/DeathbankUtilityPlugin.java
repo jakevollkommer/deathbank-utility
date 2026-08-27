@@ -39,6 +39,8 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.HitsplatApplied;
 import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.NpcDespawned;
 import net.runelite.api.events.NpcSpawned;
 import net.runelite.api.events.WidgetClosed;
@@ -81,11 +83,19 @@ public class DeathbankUtilityPlugin extends Plugin
 	private static final String MSG_DIED_AGAIN = "You have died again";
 	private static final String MSG_LOST_ITEMS = "lost the items";
 
-	// Zulrah has no retrieval interface — the priestess returns items through dialog
-	private static final String ZULRAH_DIALOG_LEFT_STUFF = "You left some stuff at Zulrah's shrine";
-	private static final String ZULRAH_DIALOG_HOLDING_STUFF = "I've got some stuff you left at the shrine";
-	private static final String ZULRAH_DIALOG_RETURNED = "I've returned it to you now";
-	private static final String ZULRAH_DIALOG_NOTHING = "I don't have anything for you to collect";
+	// Claim NPCs report the bank's state in dialog, and the wording is shared across
+	// them ("I don't have anything for you", "...to collect"), so the NPC's own name
+	// identifies the service and these generic phrases decide the state. Zulrah has
+	// no retrieval interface at all, so this is the only signal there.
+	private static final List<String> CLAIM_DIALOG_EMPTY = List.of(
+		"don't have anything for you",
+		"nothing for you to collect",
+		"returned it to you now");
+	private static final List<String> CLAIM_DIALOG_HOLDS = List.of(
+		"retrieved some of your items",
+		"have some of your items",
+		"got some stuff you left",
+		"left some stuff at");
 
 	// Deaths here never wipe a deathbank (list from zodaz/item-retrieval-warning, BSD-2)
 	private static final Set<Integer> SAFE_DEATH_REGIONS = Set.of(
@@ -343,6 +353,10 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded event)
 	{
+		if (log.isDebugEnabled() && state.isActive())
+		{
+			log.debug("Interface {} opened while deathbank tracked", event.getGroupId());
+		}
 		if (event.getGroupId() == InterfaceID.GRAVESTONE_GENERIC)
 		{
 			graveWindowOpen = true;
@@ -360,6 +374,10 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onWidgetClosed(WidgetClosed event)
 	{
+		if (log.isDebugEnabled() && state.isActive())
+		{
+			log.debug("Interface {} closed while deathbank tracked", event.getGroupId());
+		}
 		if (event.getGroupId() == InterfaceID.GRAVESTONE_GENERIC)
 		{
 			graveWindowOpen = false;
@@ -376,6 +394,12 @@ public class DeathbankUtilityPlugin extends Plugin
 	{
 		if (event.getContainerId() != InventoryID.GRAVESTONE)
 		{
+			boolean nearRetrieval = retrievalWindowOpen || retrievalTrustTicksRemaining >= 0;
+			if (log.isDebugEnabled() && nearRetrieval)
+			{
+				log.debug("Other container {} changed near retrieval window: {} items",
+					event.getContainerId(), event.getItemContainer().count());
+			}
 			return;
 		}
 		// The same container backs overworld gravestones; only trust it as deathbank
@@ -453,13 +477,39 @@ public class DeathbankUtilityPlugin extends Plugin
 		notifier.notify(config.damageNotification(), "You are taking damage with items in a deathbank" + serviceSuffix() + " — get safe!");
 	}
 
+	// --- Temporary diagnostics for the discard path (debug level, dev launches only) ---
+
+	@Subscribe
+	public void onMenuOptionClicked(MenuOptionClicked event)
+	{
+		if (!log.isDebugEnabled() || !retrievalWindowOpen)
+		{
+			return;
+		}
+		log.debug("Click while retrieval window open: option='{}' target='{}' action={} param0={} param1={}",
+			event.getMenuOption(), Text.removeTags(event.getMenuTarget()), event.getMenuAction(),
+			event.getParam0(), event.getParam1());
+	}
+
+	@Subscribe
+	public void onVarbitChanged(VarbitChanged event)
+	{
+		boolean nearRetrieval = retrievalWindowOpen || retrievalTrustTicksRemaining >= 0;
+		if (!log.isDebugEnabled() || !nearRetrieval)
+		{
+			return;
+		}
+		log.debug("Var change near retrieval window: varbit={} varp={} value={}",
+			event.getVarbitId(), event.getVarpId(), event.getValue());
+	}
+
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
 		tickRetrievalWindow();
 		tickPendingDeath();
 		tickLoginReconcile();
-		tickZulrahDialog();
+		tickClaimNpcDialog();
 	}
 
 	/**
@@ -578,50 +628,57 @@ public class DeathbankUtilityPlugin extends Plugin
 		transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
 	}
 
-	// --- Zulrah: dialog-only retrieval, no interface ---
+	// --- Claim NPC dialog: the only signal for Zulrah, and a reliable one everywhere ---
 
-	private void tickZulrahDialog()
+	private void tickClaimNpcDialog()
 	{
-		// Widget lookup first: it's a cheap null almost every tick, while the
-		// region check allocates instance-aware coordinates
-		Widget dialog = client.getWidget(InterfaceID.ChatLeft.TEXT);
-		if (dialog == null)
-		{
-			return;
-		}
-		if (!RetrievalService.ZULRAH.getClaimRegionIds().contains(currentRegionId()))
+		Widget dialogText = client.getWidget(InterfaceID.ChatLeft.TEXT);
+		if (dialogText == null)
 		{
 			return;
 		}
 
-		String text = sanitize(Text.sanitizeMultilineText(dialog.getText()));
-		boolean mentionsHeldItems = text.contains(ZULRAH_DIALOG_LEFT_STUFF) || text.contains(ZULRAH_DIALOG_HOLDING_STUFF);
-		if (mentionsHeldItems)
+		Widget dialogName = client.getWidget(InterfaceID.ChatLeft.NAME);
+		if (dialogName == null)
 		{
-			boolean itemsStillHeld = !text.contains(ZULRAH_DIALOG_RETURNED);
-			applyZulrahDialogState(itemsStillHeld);
 			return;
 		}
-		if (text.contains(ZULRAH_DIALOG_NOTHING))
+
+		// The NPC's own name tells us which service is speaking
+		Optional<RetrievalService> speaker = RetrievalService.fromName(sanitize(dialogName.getText()));
+		if (speaker.isEmpty())
 		{
-			applyZulrahDialogState(false);
+			return;
+		}
+
+		String text = sanitize(Text.sanitizeMultilineText(dialogText.getText()));
+		// Checked first: "I've got your stuff... I've returned it to you now" says both
+		if (matchesAny(text, CLAIM_DIALOG_EMPTY))
+		{
+			clearBankConfirmedEmpty(speaker.get());
+			return;
+		}
+		if (matchesAny(text, CLAIM_DIALOG_HOLDS))
+		{
+			markVerifiedActive(speaker.get(), null);
 		}
 	}
 
-	private void applyZulrahDialogState(boolean bankActive)
+	private void clearBankConfirmedEmpty(RetrievalService speaker)
 	{
-		// Fires every tick while the dialog is up; only act on an actual change
-		boolean alreadyCorrect = state.isActive() == bankActive && state.getConfidence() == Confidence.VERIFIED;
-		if (alreadyCorrect)
+		boolean nothingToClear = !state.isActive() && state.getConfidence() == Confidence.VERIFIED;
+		if (nothingToClear)
 		{
 			return;
 		}
-		if (bankActive)
-		{
-			markVerifiedActive(RetrievalService.ZULRAH, null);
-			return;
-		}
+		log.debug("{} reports an empty bank; clearing state", speaker);
 		transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
+	}
+
+	private static boolean matchesAny(String text, List<String> phrases)
+	{
+		String lowered = text.toLowerCase();
+		return phrases.stream().anyMatch(lowered::contains);
 	}
 
 	// --- Verified contents from the retrieval interface ---
