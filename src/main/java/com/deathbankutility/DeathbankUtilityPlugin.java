@@ -690,7 +690,10 @@ public class DeathbankUtilityPlugin extends Plugin
 	private void markVerifiedActive(RetrievalService service, String windowTitle)
 	{
 		boolean alreadyVerifiedActive = state.isActive() && state.getConfidence() == Confidence.VERIFIED;
-		if (alreadyVerifiedActive)
+		// Phosani's and the Nightmare share a region, so a later message naming the
+		// specific service still has to be able to correct an already-verified label
+		boolean learnsService = service != null && service != state.getService();
+		if (alreadyVerifiedActive && !learnsService)
 		{
 			return;
 		}
