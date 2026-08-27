@@ -14,7 +14,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -122,6 +124,9 @@ public class DeathbankUtilityPlugin extends Plugin
 	// "@mes_hl_red@You have items stored in an item retrieval service...", which
 	// Text.removeTags leaves behind. One mid-phrase would break substring matching.
 	private static final Pattern MESSAGE_MACRO = Pattern.compile("@[a-zA-Z0-9_]+@");
+	// The interface reports what the player can see. After a discard the backing item
+	// container reads null rather than empty, so this text is the reliable source.
+	private static final Pattern WINDOW_STACK_COUNT = Pattern.compile("Stack count:\\s*([\\d,]+)");
 
 	// Observed ticking every second regardless of player action
 	private static final Set<Integer> AMBIENT_VARPS = Set.of(3077, 3079, 3883, 1057, 1682, 1683, 243, 1668);
@@ -542,7 +547,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	{
 		if (retrievalWindowOpen)
 		{
-			readRetrievalContainer();
+			readOpenRetrievalWindow();
 			return;
 		}
 		if (retrievalTrustTicksRemaining < 0)
@@ -698,6 +703,36 @@ public class DeathbankUtilityPlugin extends Plugin
 	}
 
 	// --- Verified contents from the retrieval interface ---
+
+	/**
+	 * Discarding empties the bank without any container update or game message, and
+	 * leaves the container reading null while the interface still shows the result,
+	 * so the interface's own stack count decides whether anything is left.
+	 */
+	private void readOpenRetrievalWindow()
+	{
+		OptionalInt stackCount = readWindowStackCount();
+		boolean windowSaysEmpty = stackCount.isPresent() && stackCount.getAsInt() == 0;
+		if (windowSaysEmpty)
+		{
+			if (state.isActive())
+			{
+				log.debug("Retrieval interface reports 0 stacks; clearing deathbank");
+				transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
+			}
+			return;
+		}
+		readRetrievalContainer();
+	}
+
+	private OptionalInt readWindowStackCount()
+	{
+		return retrievalWindowTexts().stream()
+			.map(WINDOW_STACK_COUNT::matcher)
+			.filter(Matcher::find)
+			.mapToInt(matcher -> Integer.parseInt(matcher.group(1).replace(",", "")))
+			.findFirst();
+	}
 
 	private void readRetrievalContainer()
 	{
