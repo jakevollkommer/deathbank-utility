@@ -49,7 +49,7 @@ class DeathbankIndicatorOverlay extends Overlay
 	public Dimension render(Graphics2D graphics)
 	{
 		DeathbankState state = plugin.getState();
-		boolean shouldShow = config.showIndicator() && state.isActive();
+		boolean shouldShow = config.showIndicator() && state.isActive() && !plugin.isAwaitingLoginConfirmation();
 		if (!shouldShow)
 		{
 			return null;

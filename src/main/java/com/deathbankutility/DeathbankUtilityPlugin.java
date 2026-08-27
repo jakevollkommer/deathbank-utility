@@ -213,6 +213,17 @@ public class DeathbankUtilityPlugin extends Plugin
 		clearPendingDeath();
 	}
 
+	/**
+	 * Saved state carried over from a previous session is not asserted until this
+	 * session confirms it. A real deathbank announces itself in the login message
+	 * within a tick or two; stale state is cleared by the reconcile instead of
+	 * being shown as a warning first.
+	 */
+	boolean isAwaitingLoginConfirmation()
+	{
+		return loginReconcileTicksRemaining >= 0 && state.getConfidence() == Confidence.UNKNOWN;
+	}
+
 	boolean isDamageWarningActive()
 	{
 		return client.getTickCount() <= damageWarningUntilTick;
@@ -224,6 +235,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		if (event.getGameState() == GameState.LOGGING_IN)
 		{
 			loginReconcileTicksRemaining = LOGIN_RECONCILE_TICKS;
+			updatePanel();
 		}
 		if (event.getGameState() == GameState.LOADING)
 		{
@@ -676,7 +688,8 @@ public class DeathbankUtilityPlugin extends Plugin
 					stack.getQuantity(),
 					itemManager.getImage(stack.getId(), stack.getQuantity(), stack.getQuantity() > 1)))
 				.collect(Collectors.toList());
-			SwingUtilities.invokeLater(() -> panel.update(snapshot, items));
+			boolean awaitingConfirmation = isAwaitingLoginConfirmation();
+			SwingUtilities.invokeLater(() -> panel.update(snapshot, items, awaitingConfirmation));
 		});
 	}
 

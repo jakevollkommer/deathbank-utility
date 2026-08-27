@@ -45,7 +45,8 @@ class DeathbankChestOverlay extends Overlay
 	public Dimension render(Graphics2D graphics)
 	{
 		boolean nothingToHighlight = plugin.getRetrievalObjects().isEmpty() && plugin.getRetrievalNpcs().isEmpty();
-		if (nothingToHighlight || !config.highlightRetrievalPoints() || !plugin.getState().isActive())
+		boolean stateIsShown = plugin.getState().isActive() && !plugin.isAwaitingLoginConfirmation();
+		if (nothingToHighlight || !config.highlightRetrievalPoints() || !stateIsShown)
 		{
 			return null;
 		}

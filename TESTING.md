@@ -85,6 +85,17 @@ budget test dummy for anything requiring a real death. Check items off per build
       confidence, estimated/verified label, item grid with icons and name+quantity
       tooltips. Shows "No active deathbank" when inactive.
 
+## E2. Stale state at login (regression guard)
+
+- [ ] **E0 — No false warning at login.** With saved active state that is no longer
+      real (e.g. claimed on another client, or the client was killed before its
+      config flushed), logging in must NOT show the indicator. The panel reads
+      "Checking for a deathbank..." until the login message either confirms it
+      (indicator appears, verified) or the reconcile clears it silently.
+      Note: RuneLite flushes config on a timer and on graceful shutdown, so
+      `pkill`-ing the dev client loses recent state writes. Close the client
+      window instead when a test depends on persistence.
+
 ## E. Persistence & lifecycle
 
 - [ ] **E1 — Survives relog.** Active inferred state persists across logout/login;

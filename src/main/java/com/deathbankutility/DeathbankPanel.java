@@ -85,8 +85,13 @@ class DeathbankPanel extends PluginPanel
 		showInactive();
 	}
 
-	void update(DeathbankState state, List<PanelItem> items)
+	void update(DeathbankState state, List<PanelItem> items, boolean awaitingConfirmation)
 	{
+		if (awaitingConfirmation)
+		{
+			showChecking();
+			return;
+		}
 		if (!state.isActive())
 		{
 			showInactive();
@@ -101,6 +106,17 @@ class DeathbankPanel extends PluginPanel
 
 		itemGrid.removeAll();
 		items.forEach(item -> itemGrid.add(buildItemCell(item)));
+		itemGrid.revalidate();
+		itemGrid.repaint();
+	}
+
+	private void showChecking()
+	{
+		statusLabel.setText("Checking for a deathbank...");
+		statusLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		detailLabel.setText(wrapped("Waiting for the game to confirm whether anything is stored."));
+		contentsLabel.setText("");
+		itemGrid.removeAll();
 		itemGrid.revalidate();
 		itemGrid.repaint();
 	}
