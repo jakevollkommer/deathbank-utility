@@ -508,8 +508,16 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 
-		log.debug("Death at {} resolved: ~{} stacks banked", service.getDisplayName(), banked.size());
-		transitionTo(DeathbankState.active(Confidence.INFERRED, service, null, banked, false));
+		// A message may already have confirmed the bank, and it names the service more
+		// precisely than the region can (Phosani's and the Nightmare share a region),
+		// so recording the items must not downgrade what is already known
+		boolean alreadyConfirmed = state.isActive() && state.getConfidence() == Confidence.VERIFIED;
+		Confidence confidence = alreadyConfirmed ? Confidence.VERIFIED : Confidence.INFERRED;
+		RetrievalService labelled = alreadyConfirmed && state.getService() != null ? state.getService() : service;
+
+		log.debug("Death at {} resolved: ~{} stacks banked, labelled {} ({})",
+			service.getDisplayName(), banked.size(), labelled, confidence);
+		transitionTo(DeathbankState.active(confidence, labelled, state.getWindowTitle(), banked, false));
 	}
 
 	private void clearPendingDeath()
