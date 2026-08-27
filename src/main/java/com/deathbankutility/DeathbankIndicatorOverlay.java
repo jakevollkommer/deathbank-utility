@@ -86,9 +86,10 @@ class DeathbankIndicatorOverlay extends Overlay
 	private static String buildTooltip(DeathbankState state)
 	{
 		boolean stateIsUncertain = state.getConfidence() == Confidence.UNKNOWN;
-		String heading = stateIsUncertain
-			? "Deathbank possibly active: " + state.displayLabel()
-			: "Active deathbank: " + state.displayLabel();
+		String verb = stateIsUncertain ? "Deathbank possibly active" : "Active deathbank";
+		String heading = state.isLocationKnown()
+			? verb + ": " + state.displayLabel()
+			: verb + " (location unknown, open the chest to identify it)";
 		return heading + "</br>" + describeContents(state)
 			+ "</br>Any unsafe death anywhere deletes these items.";
 	}

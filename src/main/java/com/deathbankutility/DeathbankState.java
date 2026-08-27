@@ -70,7 +70,7 @@ public class DeathbankState
 
 	boolean isLocationKnown()
 	{
-		return service != null || windowTitle != null;
+		return service != null || hasWindowTitle();
 	}
 
 	String displayLabel()
@@ -79,7 +79,7 @@ public class DeathbankState
 		{
 			return service.getDisplayName();
 		}
-		return windowTitle != null ? windowTitle : "Unknown location";
+		return hasWindowTitle() ? windowTitle.trim() : "location unknown";
 	}
 
 	String shortLabel()
@@ -88,7 +88,12 @@ public class DeathbankState
 		{
 			return service.getShortName();
 		}
-		return windowTitle != null ? truncate(windowTitle) : "?";
+		return hasWindowTitle() ? truncate(windowTitle.trim()) : "?";
+	}
+
+	private boolean hasWindowTitle()
+	{
+		return windowTitle != null && !windowTitle.trim().isEmpty();
 	}
 
 	private static String truncate(String label)

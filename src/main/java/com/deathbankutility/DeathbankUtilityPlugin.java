@@ -1,5 +1,6 @@
 package com.deathbankutility;
 
+import com.google.common.base.Strings;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.google.inject.Provides;
@@ -112,9 +113,9 @@ public class DeathbankUtilityPlugin extends Plugin
 	private static final int DEATH_RESOLVE_MIN_TICKS = 3;
 	private static final int DEATH_RESOLVE_TIMEOUT_TICKS = 50;
 	private static final int DAMAGE_WARNING_DISPLAY_TICKS = 8;
-	// The retrieval window's title component; zodaz's plugin reads child 1, but
-	// gameval names it FRAME — TESTING.md B1 confirms which child holds the title
-	private static final int RETRIEVAL_WINDOW_TITLE_CHILD = 1;
+	// Depth of the widget tree walk used to find the retrieval window's location
+	// text; the interface has no TITLE component, so its texts are scanned instead
+	private static final int WINDOW_TEXT_DEPTH = 3;
 
 	@Inject
 	private Client client;
@@ -298,7 +299,9 @@ public class DeathbankUtilityPlugin extends Plugin
 		boolean confirmsBankExists = message.contains(MSG_RETRIEVAL_SERVICE) || message.contains(MSG_RETRIEVED_SOME);
 		if (confirmsBankExists)
 		{
-			markVerifiedActive(state.getService(), state.getWindowTitle());
+			// The message names where the items are, e.g. "...at the Theatre of Blood"
+			RetrievalService named = RetrievalService.fromName(message).orElse(state.getService());
+			markVerifiedActive(named, state.getWindowTitle());
 			return;
 		}
 
@@ -575,16 +578,55 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 
-		String title = retrievalWindowTitle();
-		RetrievalService service = RetrievalService.fromName(title).orElse(state.getService());
-		log.debug("Verified deathbank contents: {} stacks, window title '{}'", stacks.size(), title);
-		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, title, stacks, true));
+		List<String> windowTexts = retrievalWindowTexts();
+		RetrievalService service = firstNamedService(windowTexts).orElse(state.getService());
+		String locationText = service != null ? null : firstNonBlank(windowTexts).orElse(state.getWindowTitle());
+		log.debug("Verified deathbank contents: {} stacks, service {}, window texts {}", stacks.size(), service, windowTexts);
+		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, locationText, stacks, true));
 	}
 
-	private String retrievalWindowTitle()
+	/**
+	 * The retrieval interface has no title component, so collect the text from the
+	 * components that can name the location and let the caller match it.
+	 */
+	private List<String> retrievalWindowTexts()
 	{
-		Widget title = client.getWidget(InterfaceID.GRAVESTONE_RETRIEVAL, RETRIEVAL_WINDOW_TITLE_CHILD);
-		return title != null ? Text.removeTags(title.getText()) : null;
+		return Stream.of(InterfaceID.GravestoneRetrieval.INFO, InterfaceID.GravestoneRetrieval.FRAME)
+			.map(client::getWidget)
+			.filter(Objects::nonNull)
+			.flatMap(widget -> widgetTexts(widget, WINDOW_TEXT_DEPTH))
+			.distinct()
+			.collect(Collectors.toList());
+	}
+
+	private static Stream<String> widgetTexts(Widget widget, int depthRemaining)
+	{
+		String text = Text.removeTags(Strings.nullToEmpty(widget.getText())).trim();
+		Stream<String> own = text.isEmpty() ? Stream.empty() : Stream.of(text);
+		if (depthRemaining <= 1)
+		{
+			return own;
+		}
+
+		Stream<Widget> children = Stream.of(widget.getStaticChildren(), widget.getDynamicChildren(), widget.getNestedChildren())
+			.filter(Objects::nonNull)
+			.flatMap(Arrays::stream)
+			.filter(Objects::nonNull);
+		return Stream.concat(own, children.flatMap(child -> widgetTexts(child, depthRemaining - 1)));
+	}
+
+	private static Optional<RetrievalService> firstNamedService(List<String> texts)
+	{
+		return texts.stream()
+			.map(RetrievalService::fromName)
+			.filter(Optional::isPresent)
+			.map(Optional::get)
+			.findFirst();
+	}
+
+	private static Optional<String> firstNonBlank(List<String> texts)
+	{
+		return texts.stream().filter(text -> !text.trim().isEmpty()).findFirst();
 	}
 
 	// --- State transitions: every change goes through this one door ---
