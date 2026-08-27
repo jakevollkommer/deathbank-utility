@@ -61,8 +61,25 @@ budget test dummy for anything requiring a real death. Check items off per build
       are only distinguishable from this text (they share region 15515).
 - [ ] **B2 — Partial withdrawal tracked.** Take some items out while the window is
       open; count updates live.
-- [ ] **B3 — Emptying clears state.** Withdraw everything; infobox disappears and
-      state persists as inactive across a relog.
+- [x] **B3 — Emptying clears state.** Withdraw everything; the indicator disappears
+      and state persists as inactive across a relog.
+- [x] **B3b — Discarding clears state.** ✅ **VERIFIED 2026-08-27.** Discard-All, then
+      both confirmations. The emptied window reports `Stack count: 0` and the plugin
+      clears immediately ("Retrieval interface reports 0 stacks").
+
+      **What the game does on discard (all confirmed by instrumentation):**
+      - no `ItemContainerChanged` fires, and no game message is sent
+      - **no varp changes at all** ("Varps changed while retrieval window was open: none")
+      - the `Discard-All` click is component 602:10, but it is NOT sufficient evidence:
+        two confirmations follow and the second deliberately swaps the option order, so
+        the player can still back out
+      - after the discard the interface reopens with `Stack count: 0` while the backing
+        item container reads **null**, and the title degrades to a generic
+        "Item Retrieval Service"
+
+      Therefore emptiness is read from the interface's stack count, never from the
+      container. A null container read is also produced by simply closing the window
+      with items still inside, so it can never be treated as evidence of an empty bank.
 - [ ] **B4 — 602 vs 672 disambiguation.** Die with a normal gravestone, open the
       grave. The plugin must NOT treat grave contents as a deathbank (debug log
       shows "Ignoring gravestone container update"). Confirm with the widget
@@ -130,5 +147,5 @@ budget test dummy for anything requiring a real death. Check items off per build
 | Retrieval window title per service | B1, each service | ☑ ToB captured, others pending |
 | Grave vs deathbank widget group IDs | B4, widget inspector | ☐ |
 | Chest/NPC object IDs per service (for phase 2 recoloring) | dev tools object inspector at each chest | ☐ |
-| Discard path: does emptying via Discard close the window before the container update? | live discard test, watch the grace-tick log | ☐ |
+| Discard path | resolved: no events, no varps; read the interface stack count | ☑ |
 | Whether The Mimic / quest services hit the region fallback | die there (cheap quest replays not possible — low priority) | ☐ |
