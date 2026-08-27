@@ -871,6 +871,10 @@ public class DeathbankUtilityPlugin extends Plugin
 	private void saveState()
 	{
 		configManager.setRSProfileConfiguration(DeathbankUtilityConfig.GROUP, STATE_KEY, gson.toJson(state));
+		// Config is otherwise flushed on a timer and on clean shutdown, so a crash
+		// (or a killed client) loses the most recent state. Losing which items are in
+		// a deathbank is exactly what this plugin exists to prevent, so flush now.
+		configManager.sendConfig();
 	}
 
 	// --- Helpers ---
