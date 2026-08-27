@@ -56,8 +56,27 @@ class DeathbankChestOverlay extends Overlay
 		// The config color's alpha suits the outline; label text needs full opacity
 		Color labelColor = ColorUtil.colorWithAlpha(outlineColor, 255);
 
-		plugin.getRetrievalObjects().forEach(object -> renderObject(graphics, object, outlineColor, labelColor));
-		plugin.getRetrievalNpcs().forEach(npc -> renderNpc(graphics, npc, outlineColor, labelColor));
+		// Claim points for different services can share a room (Shura and Sister
+		// Senga both stand in the Sisterhood Sanctuary), so highlight only the one
+		// holding the items. With the location still unknown, every candidate is
+		// highlighted rather than guessing wrong.
+		RetrievalService service = plugin.getState().getService();
+		boolean locationUnknown = service == null;
+
+		plugin.getRetrievalObjects().forEach(object ->
+		{
+			if (locationUnknown || service.getClaimObjectIds().contains(object.getId()))
+			{
+				renderObject(graphics, object, outlineColor, labelColor);
+			}
+		});
+		plugin.getRetrievalNpcs().forEach(npc ->
+		{
+			if (locationUnknown || service.getClaimNpcIds().contains(npc.getId()))
+			{
+				renderNpc(graphics, npc, outlineColor, labelColor);
+			}
+		});
 		return null;
 	}
 
