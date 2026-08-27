@@ -26,7 +26,7 @@ class DeathbankIndicatorOverlay extends Overlay
 	private static final int BOX_SIZE = 40;
 	private static final Dimension BOX_DIMENSION = new Dimension(BOX_SIZE, BOX_SIZE);
 	private static final int LABEL_HEIGHT = 14;
-	// Bottom-left corner of the box is plain background, clear of the skull
+	// Bottom-right corner of the box is plain background, clear of the skull
 	private static final int COUNT_INSET = 3;
 
 	private final Client client;
@@ -111,12 +111,13 @@ class DeathbankIndicatorOverlay extends Overlay
 	private static void renderCount(Graphics2D graphics, String count, Color color)
 	{
 		graphics.setFont(FontManager.getRunescapeBoldFont());
+		FontMetrics metrics = graphics.getFontMetrics();
 
 		TextComponent text = new TextComponent();
 		text.setText(count);
 		text.setColor(color);
 		text.setOutline(true);
-		text.setPosition(new Point(COUNT_INSET, BOX_SIZE - COUNT_INSET));
+		text.setPosition(new Point(BOX_SIZE - COUNT_INSET - metrics.stringWidth(count), BOX_SIZE - COUNT_INSET));
 		text.render(graphics);
 	}
 
