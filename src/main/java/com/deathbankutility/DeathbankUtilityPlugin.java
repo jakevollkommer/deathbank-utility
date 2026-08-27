@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
@@ -107,6 +108,11 @@ public class DeathbankUtilityPlugin extends Plugin
 		11854, 11855, 12110, 12111, // Rogues' Den
 		12127, 7512, 7768 // Gauntlet (items never enter)
 	);
+
+	// Live game messages carry unresolved Jagex formatting macros, e.g.
+	// "@mes_hl_red@You have items stored in an item retrieval service...", which
+	// Text.removeTags leaves behind. One mid-phrase would break substring matching.
+	private static final Pattern MESSAGE_MACRO = Pattern.compile("@[a-zA-Z0-9_]+@");
 
 	private static final String STATE_KEY = "state";
 	private static final int LOGIN_RECONCILE_TICKS = 25;
@@ -295,7 +301,7 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 
-		String message = Text.removeTags(event.getMessage());
+		String message = sanitize(event.getMessage());
 		boolean confirmsBankExists = message.contains(MSG_RETRIEVAL_SERVICE) || message.contains(MSG_RETRIEVED_SOME);
 		if (confirmsBankExists)
 		{
@@ -528,7 +534,7 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 
-		String text = Text.sanitizeMultilineText(dialog.getText());
+		String text = sanitize(Text.sanitizeMultilineText(dialog.getText()));
 		boolean mentionsHeldItems = text.contains(ZULRAH_DIALOG_LEFT_STUFF) || text.contains(ZULRAH_DIALOG_HOLDING_STUFF);
 		if (mentionsHeldItems)
 		{
@@ -602,7 +608,7 @@ public class DeathbankUtilityPlugin extends Plugin
 
 	private static Stream<String> widgetTexts(Widget widget, int depthRemaining)
 	{
-		String text = Text.removeTags(Strings.nullToEmpty(widget.getText())).trim();
+		String text = sanitize(Strings.nullToEmpty(widget.getText())).trim();
 		Stream<String> own = text.isEmpty() ? Stream.empty() : Stream.of(text);
 		if (depthRemaining <= 1)
 		{
@@ -751,6 +757,11 @@ public class DeathbankUtilityPlugin extends Plugin
 			.filter(DeathbankUtilityPlugin::isRealItem)
 			.map(item -> new DeathbankState.ItemStack(item.getId(), item.getQuantity()))
 			.collect(Collectors.toList());
+	}
+
+	private static String sanitize(String text)
+	{
+		return MESSAGE_MACRO.matcher(Text.removeTags(text)).replaceAll("").trim();
 	}
 
 	private static boolean isRealItem(Item item)

@@ -8,8 +8,14 @@ budget test dummy for anything requiring a real death. Check items off per build
 - [ ] **A1 — Login message (bank exists).** With items in any deathbank, log in.
       Infobox appears within a tick of the `items stored in an item retrieval service`
       game message; confidence shows *verified*.
-      → While here: **copy the exact full message text into this file** (we match on a
-      substring; the full wording + location phrasing is undocumented).
+      ✅ **CAPTURED 2026-08-27** (ToB deathbank, fresh login), exact text:
+      `@mes_hl_red@You have items stored in an item retrieval service. Please visit
+      the magical chest outside the Theatre of Blood. If you die again before
+      retrieving them, they will be lost.`
+      Two findings: the message names the location, so it is parsed to identify the
+      service without opening the chest; and it carries an unresolved `@mes_hl_red@`
+      formatting macro that `Text.removeTags` does not strip, so all matching runs
+      through `sanitize()` which removes `@...@` tokens too.
 - [ ] **A2 — Login reconciliation (bank gone).** Claim the bank on another client
       (or mobile), then log in on the dev client with stale "active" saved state.
       After ~15s (25 ticks) with no login message, the infobox clears. This is the
@@ -91,7 +97,7 @@ budget test dummy for anything requiring a real death. Check items off per build
 
 | Needed | Where to get it | Status |
 |---|---|---|
-| Exact login warning text | A1 | ☐ |
+| Exact login warning text | A1 | ☑ captured, see A1 |
 | Exact died-again wipe message text | A6 | ☐ |
 | Retrieval window title per service | B1, each service | ☐ |
 | Grave vs deathbank widget group IDs | B4, widget inspector | ☐ |
