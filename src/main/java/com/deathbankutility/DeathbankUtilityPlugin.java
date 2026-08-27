@@ -353,9 +353,9 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded event)
 	{
-		if (log.isDebugEnabled() && state.isActive())
+		if (log.isDebugEnabled() && isNearRetrievalWindow())
 		{
-			log.debug("Interface {} opened while deathbank tracked", event.getGroupId());
+			log.debug("Interface {} opened near retrieval window", event.getGroupId());
 		}
 		if (event.getGroupId() == InterfaceID.GRAVESTONE_GENERIC)
 		{
@@ -374,9 +374,9 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onWidgetClosed(WidgetClosed event)
 	{
-		if (log.isDebugEnabled() && state.isActive())
+		if (log.isDebugEnabled() && isNearRetrievalWindow())
 		{
-			log.debug("Interface {} closed while deathbank tracked", event.getGroupId());
+			log.debug("Interface {} closed near retrieval window", event.getGroupId());
 		}
 		if (event.getGroupId() == InterfaceID.GRAVESTONE_GENERIC)
 		{
@@ -394,8 +394,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	{
 		if (event.getContainerId() != InventoryID.GRAVESTONE)
 		{
-			boolean nearRetrieval = retrievalWindowOpen || retrievalTrustTicksRemaining >= 0;
-			if (log.isDebugEnabled() && nearRetrieval)
+			if (log.isDebugEnabled() && isNearRetrievalWindow())
 			{
 				log.debug("Other container {} changed near retrieval window: {} items",
 					event.getContainerId(), event.getItemContainer().count());
@@ -479,6 +478,11 @@ public class DeathbankUtilityPlugin extends Plugin
 
 	// --- Temporary diagnostics for the discard path (debug level, dev launches only) ---
 
+	private boolean isNearRetrievalWindow()
+	{
+		return retrievalWindowOpen || retrievalTrustTicksRemaining >= 0;
+	}
+
 	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked event)
 	{
@@ -494,8 +498,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onVarbitChanged(VarbitChanged event)
 	{
-		boolean nearRetrieval = retrievalWindowOpen || retrievalTrustTicksRemaining >= 0;
-		if (!log.isDebugEnabled() || !nearRetrieval)
+		if (!log.isDebugEnabled() || !isNearRetrievalWindow())
 		{
 			return;
 		}
