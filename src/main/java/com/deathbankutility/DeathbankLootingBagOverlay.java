@@ -12,13 +12,13 @@ import net.runelite.client.ui.overlay.WidgetItemOverlay;
  * Marks the items in the retrieval interface that came out of the looting bag,
  * so they can be picked back out and re-bagged without sorting by memory.
  */
-class DeathbankBagOverlay extends WidgetItemOverlay
+class DeathbankLootingBagOverlay extends WidgetItemOverlay
 {
 	private final DeathbankUtilityPlugin plugin;
 	private final DeathbankUtilityConfig config;
 
 	@Inject
-	DeathbankBagOverlay(DeathbankUtilityPlugin plugin, DeathbankUtilityConfig config)
+	DeathbankLootingBagOverlay(DeathbankUtilityPlugin plugin, DeathbankUtilityConfig config)
 	{
 		this.plugin = plugin;
 		this.config = config;

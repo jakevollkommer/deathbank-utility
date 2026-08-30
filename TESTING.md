@@ -119,16 +119,17 @@ budget test dummy for anything requiring a real death. Check items off per build
 
 - [ ] **F1 — Bag items marked.** Open the looting bag (so the client sees its
       contents), die at content with a retrieval service, then open the retrieval
-      chest. Items that came out of the bag are outlined in the configured color.
-      Verify against the known ordering: bag contents sit after the worn/inventory
-      items, with the ammo slot typically the last non-bag slot.
-- [ ] **F2 — Stale bag snapshot.** Die without having opened the bag this session.
+      chest. Items that came out of the looting bag are outlined in the configured color.
+      Verify against the known ordering: looting bag contents sit after the worn and
+      inventory items, with the ammo slot typically the last non looting bag slot.
+- [ ] **F2 — Stale looting bag snapshot.** Die without having opened the looting bag
+      this session.
       Nothing is marked (the client never saw the contents), and the plugin does not
-      guess. The panel omits the bag sentence.
-- [ ] **F3 — Same item in both places.** Carry an item that is also in the bag (e.g.
+      guess. The panel omits the looting bag sentence.
+- [ ] **F3 — Same item in both places.** Carry an item that is also in the looting bag (e.g.
       brews). Note whether both copies are marked; matching is by item id, so this is
       expected and should be documented rather than silently wrong.
-- [ ] **F4 — Bag emptied by the death.** After dying, the bag is empty, so a second
+- [ ] **F4 — Looting bag emptied by the death.** After dying, the looting bag is empty, so a second
       death with no re-fill marks nothing.
 
 ## G. Mistaken inference (Theatre of Blood)

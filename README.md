@@ -17,7 +17,7 @@ game only mentions in an easily-missed login message. This plugin:
 - **highlights the claim point**, outlining the chest or NPC holding your items and
   labelling it DEATHBANK
 - **marks which items came out of your looting bag**, so re-bagging is a matter of
-  clicking the outlined items instead of remembering where the bag contents started
+  clicking the outlined items instead of remembering where the looting bag contents started
 - **remembers what went in** — estimated from your pre-death inventory, upgraded to
   exact contents whenever you open the retrieval interface
 - **reconciles at login**: if the game's retrieval warning is enabled and doesn't

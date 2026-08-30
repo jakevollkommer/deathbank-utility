@@ -164,7 +164,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Inject
 	private DeathbankWarningOverlay warningOverlay;
 	@Inject
-	private DeathbankBagOverlay bagOverlay;
+	private DeathbankLootingBagOverlay lootingBagOverlay;
 
 	@Getter
 	private DeathbankState state = DeathbankState.unknown();
@@ -186,13 +186,13 @@ public class DeathbankUtilityPlugin extends Plugin
 
 	// A death in IRS content is resolved after respawn by diffing carried items,
 	// so the 3 items kept on death never count as banked
-	// The client only learns the bag's contents when the player opens or fills it, so
+	// The client only learns the looting bag's contents when the player opens or fills it, so
 	// the last sighting is kept and stamped onto the deathbank at death
 	private Map<Integer, Integer> lootingBagAtLastSight = Map.of();
 
 	private RetrievalService pendingDeathService;
 	private Map<Integer, Integer> pendingDeathSnapshot = Map.of();
-	private List<DeathbankState.ItemStack> pendingDeathBagItems = List.of();
+	private List<DeathbankState.ItemStack> pendingDeathLootingBagItems = List.of();
 	private int pendingDeathTicks;
 
 	@Provides
@@ -216,7 +216,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		overlayManager.add(indicatorOverlay);
 		overlayManager.add(chestOverlay);
 		overlayManager.add(warningOverlay);
-		overlayManager.add(bagOverlay);
+		overlayManager.add(lootingBagOverlay);
 		loadState();
 		updatePanel();
 	}
@@ -229,7 +229,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		overlayManager.remove(indicatorOverlay);
 		overlayManager.remove(chestOverlay);
 		overlayManager.remove(warningOverlay);
-		overlayManager.remove(bagOverlay);
+		overlayManager.remove(lootingBagOverlay);
 		retrievalObjects.clear();
 		retrievalNpcs.clear();
 		retrievalWindowOpen = false;
@@ -486,7 +486,7 @@ public class DeathbankUtilityPlugin extends Plugin
 
 		pendingDeathService = service.get();
 		pendingDeathSnapshot = countCarriedItems();
-		pendingDeathBagItems = toItemStacks(lootingBagAtLastSight);
+		pendingDeathLootingBagItems = toItemStacks(lootingBagAtLastSight);
 		lootingBagAtLastSight = Map.of();
 		pendingDeathTicks = 0;
 		log.debug("Death in {} region; will resolve banked items after respawn", pendingDeathService.getDisplayName());
@@ -568,7 +568,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	private void resolvePendingDeath()
 	{
 		RetrievalService service = pendingDeathService;
-		List<DeathbankState.ItemStack> bagItems = pendingDeathBagItems;
+		List<DeathbankState.ItemStack> lootingBagItems = pendingDeathLootingBagItems;
 		Map<Integer, Integer> lost = new HashMap<>(pendingDeathSnapshot);
 		countCarriedItems().forEach((id, kept) -> lost.merge(id, -kept, Integer::sum));
 		clearPendingDeath();
@@ -593,14 +593,14 @@ public class DeathbankUtilityPlugin extends Plugin
 
 		log.debug("Death at {} resolved: ~{} stacks banked, labelled {} ({})",
 			service.getDisplayName(), banked.size(), labelled, confidence);
-		transitionTo(DeathbankState.active(confidence, labelled, state.getWindowTitle(), banked, false, bagItems));
+		transitionTo(DeathbankState.active(confidence, labelled, state.getWindowTitle(), banked, false, lootingBagItems));
 	}
 
 	private void clearPendingDeath()
 	{
 		pendingDeathService = null;
 		pendingDeathSnapshot = Map.of();
-		pendingDeathBagItems = List.of();
+		pendingDeathLootingBagItems = List.of();
 		pendingDeathTicks = 0;
 	}
 
@@ -758,7 +758,7 @@ public class DeathbankUtilityPlugin extends Plugin
 
 		String locationText = service != null ? null : firstNonBlank(windowTexts).orElse(state.getWindowTitle());
 		log.debug("Verified deathbank contents: {} stacks, service {}, window texts {}", stacks.size(), service, windowTexts);
-		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, locationText, stacks, true, state.getBagItems()));
+		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, locationText, stacks, true, state.getLootingBagItems()));
 	}
 
 	/**
@@ -832,7 +832,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 		// Keep any previously recorded items; they stay flagged as estimates
 		// until the retrieval interface confirms them
-		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, windowTitle, state.getItems(), state.isItemsVerified(), state.getBagItems()));
+		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, windowTitle, state.getItems(), state.isItemsVerified(), state.getLootingBagItems()));
 	}
 
 	// --- Side panel ---

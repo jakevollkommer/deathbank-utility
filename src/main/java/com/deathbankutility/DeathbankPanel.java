@@ -139,14 +139,14 @@ class DeathbankPanel extends PluginPanel
 		return "<html><body style='margin:0;width:" + TEXT_WRAP_WIDTH + "px'>" + text + "</body></html>";
 	}
 
-	private static String bagSentence(DeathbankState state)
+	private static String lootingBagSentence(DeathbankState state)
 	{
-		int bagStacks = state.getBagItems().size();
-		if (bagStacks == 0)
+		int lootingBagStacks = state.getLootingBagItems().size();
+		if (lootingBagStacks == 0)
 		{
 			return "";
 		}
-		return " " + bagStacks + " came from your looting bag, marked in the chest.";
+		return " " + lootingBagStacks + " came from your looting bag, marked in the chest.";
 	}
 
 	private static String describeStacks(int stackCount)
@@ -172,7 +172,7 @@ class DeathbankPanel extends PluginPanel
 		String basis = state.isItemsVerified()
 			? "Verified from the retrieval interface:"
 			: "Estimated from your gear at death:";
-		return wrapped(basis + " " + describeStacks(items.size()) + bagSentence(state));
+		return wrapped(basis + " " + describeStacks(items.size()) + lootingBagSentence(state));
 	}
 
 	private static JLabel buildItemCell(PanelItem item)
