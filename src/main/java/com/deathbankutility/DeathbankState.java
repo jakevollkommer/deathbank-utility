@@ -30,6 +30,8 @@ public class DeathbankState
 	private String windowTitle;
 	private List<ItemStack> items = List.of();
 	private boolean itemsVerified;
+	/** What the looting bag held when it went in, so those items can be marked for re-bagging. */
+	private List<ItemStack> bagItems = List.of();
 
 	static DeathbankState unknown()
 	{
@@ -46,6 +48,12 @@ public class DeathbankState
 	static DeathbankState active(Confidence confidence, RetrievalService service, String windowTitle,
 		List<ItemStack> items, boolean itemsVerified)
 	{
+		return active(confidence, service, windowTitle, items, itemsVerified, List.of());
+	}
+
+	static DeathbankState active(Confidence confidence, RetrievalService service, String windowTitle,
+		List<ItemStack> items, boolean itemsVerified, List<ItemStack> bagItems)
+	{
 		DeathbankState state = new DeathbankState();
 		state.active = true;
 		state.confidence = confidence;
@@ -53,7 +61,13 @@ public class DeathbankState
 		state.windowTitle = windowTitle;
 		state.items = items;
 		state.itemsVerified = itemsVerified;
+		state.bagItems = bagItems;
 		return state;
+	}
+
+	boolean cameFromLootingBag(int itemId)
+	{
+		return bagItems.stream().anyMatch(stack -> stack.getId() == itemId);
 	}
 
 	DeathbankState withConfidence(Confidence newConfidence)
@@ -65,6 +79,7 @@ public class DeathbankState
 		copy.windowTitle = windowTitle;
 		copy.items = items;
 		copy.itemsVerified = itemsVerified;
+		copy.bagItems = bagItems;
 		return copy;
 	}
 

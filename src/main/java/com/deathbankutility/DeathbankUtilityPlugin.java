@@ -163,6 +163,8 @@ public class DeathbankUtilityPlugin extends Plugin
 	private DeathbankChestOverlay chestOverlay;
 	@Inject
 	private DeathbankWarningOverlay warningOverlay;
+	@Inject
+	private DeathbankBagOverlay bagOverlay;
 
 	@Getter
 	private DeathbankState state = DeathbankState.unknown();
@@ -184,8 +186,13 @@ public class DeathbankUtilityPlugin extends Plugin
 
 	// A death in IRS content is resolved after respawn by diffing carried items,
 	// so the 3 items kept on death never count as banked
+	// The client only learns the bag's contents when the player opens or fills it, so
+	// the last sighting is kept and stamped onto the deathbank at death
+	private Map<Integer, Integer> lootingBagAtLastSight = Map.of();
+
 	private RetrievalService pendingDeathService;
 	private Map<Integer, Integer> pendingDeathSnapshot = Map.of();
+	private List<DeathbankState.ItemStack> pendingDeathBagItems = List.of();
 	private int pendingDeathTicks;
 
 	@Provides
@@ -209,6 +216,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		overlayManager.add(indicatorOverlay);
 		overlayManager.add(chestOverlay);
 		overlayManager.add(warningOverlay);
+		overlayManager.add(bagOverlay);
 		loadState();
 		updatePanel();
 	}
@@ -221,6 +229,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		overlayManager.remove(indicatorOverlay);
 		overlayManager.remove(chestOverlay);
 		overlayManager.remove(warningOverlay);
+		overlayManager.remove(bagOverlay);
 		retrievalObjects.clear();
 		retrievalNpcs.clear();
 		retrievalWindowOpen = false;
@@ -384,6 +393,21 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
+		if (event.getContainerId() == InventoryID.LOOTING_BAG)
+		{
+			lootingBagAtLastSight = countItems(Arrays.stream(event.getItemContainer().getItems()));
+			log.debug("Looting bag seen holding {} stacks", lootingBagAtLastSight.size());
+			return;
+		}
+
+		boolean carriedItemsChanged = event.getContainerId() == InventoryID.INV
+			|| event.getContainerId() == InventoryID.WORN;
+		if (carriedItemsChanged)
+		{
+			clearIfInferredItemsCameBack();
+			return;
+		}
+
 		if (event.getContainerId() != InventoryID.GRAVESTONE)
 		{
 			return;
@@ -404,6 +428,33 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 		applyVerifiedContents(event.getItemContainer().getItems());
+	}
+
+	/**
+	 * Not every unsafe death banks items. A death inside the Theatre of Blood holds
+	 * them until the raid ends and hands them back, so the post-respawn diff can
+	 * infer a deathbank that never existed. Getting those exact items back in hand is
+	 * positive proof the inference was wrong, which is safe to act on, unlike the
+	 * absence of a signal.
+	 */
+	private void clearIfInferredItemsCameBack()
+	{
+		boolean inferredBank = state.isActive() && !state.isItemsVerified() && !state.getItems().isEmpty();
+		if (!inferredBank)
+		{
+			return;
+		}
+
+		Map<Integer, Integer> carried = countCarriedItems();
+		boolean everythingBack = state.getItems().stream()
+			.allMatch(stack -> carried.getOrDefault(stack.getId(), 0) >= stack.getQuantity());
+		if (!everythingBack)
+		{
+			return;
+		}
+
+		log.debug("All {} inferred stacks are back in hand; clearing mistaken deathbank", state.getItems().size());
+		transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
 	}
 
 	@Subscribe
@@ -435,6 +486,8 @@ public class DeathbankUtilityPlugin extends Plugin
 
 		pendingDeathService = service.get();
 		pendingDeathSnapshot = countCarriedItems();
+		pendingDeathBagItems = toItemStacks(lootingBagAtLastSight);
+		lootingBagAtLastSight = Map.of();
 		pendingDeathTicks = 0;
 		log.debug("Death in {} region; will resolve banked items after respawn", pendingDeathService.getDisplayName());
 	}
@@ -515,6 +568,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	private void resolvePendingDeath()
 	{
 		RetrievalService service = pendingDeathService;
+		List<DeathbankState.ItemStack> bagItems = pendingDeathBagItems;
 		Map<Integer, Integer> lost = new HashMap<>(pendingDeathSnapshot);
 		countCarriedItems().forEach((id, kept) -> lost.merge(id, -kept, Integer::sum));
 		clearPendingDeath();
@@ -539,13 +593,14 @@ public class DeathbankUtilityPlugin extends Plugin
 
 		log.debug("Death at {} resolved: ~{} stacks banked, labelled {} ({})",
 			service.getDisplayName(), banked.size(), labelled, confidence);
-		transitionTo(DeathbankState.active(confidence, labelled, state.getWindowTitle(), banked, false));
+		transitionTo(DeathbankState.active(confidence, labelled, state.getWindowTitle(), banked, false, bagItems));
 	}
 
 	private void clearPendingDeath()
 	{
 		pendingDeathService = null;
 		pendingDeathSnapshot = Map.of();
+		pendingDeathBagItems = List.of();
 		pendingDeathTicks = 0;
 	}
 
@@ -703,7 +758,7 @@ public class DeathbankUtilityPlugin extends Plugin
 
 		String locationText = service != null ? null : firstNonBlank(windowTexts).orElse(state.getWindowTitle());
 		log.debug("Verified deathbank contents: {} stacks, service {}, window texts {}", stacks.size(), service, windowTexts);
-		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, locationText, stacks, true));
+		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, locationText, stacks, true, state.getBagItems()));
 	}
 
 	/**
@@ -777,7 +832,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 		// Keep any previously recorded items; they stay flagged as estimates
 		// until the retrieval interface confirms them
-		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, windowTitle, state.getItems(), state.isItemsVerified()));
+		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, windowTitle, state.getItems(), state.isItemsVerified(), state.getBagItems()));
 	}
 
 	// --- Side panel ---
@@ -865,12 +920,24 @@ public class DeathbankUtilityPlugin extends Plugin
 
 	private Map<Integer, Integer> countCarriedItems()
 	{
-		return Stream.of(InventoryID.INV, InventoryID.WORN)
+		return countItems(Stream.of(InventoryID.INV, InventoryID.WORN)
 			.map(client::getItemContainer)
 			.filter(Objects::nonNull)
-			.flatMap(container -> Arrays.stream(container.getItems()))
+			.flatMap(container -> Arrays.stream(container.getItems())));
+	}
+
+	private static Map<Integer, Integer> countItems(Stream<Item> items)
+	{
+		return items
 			.filter(DeathbankUtilityPlugin::isRealItem)
 			.collect(Collectors.toMap(Item::getId, Item::getQuantity, Integer::sum, HashMap::new));
+	}
+
+	private static List<DeathbankState.ItemStack> toItemStacks(Map<Integer, Integer> counted)
+	{
+		return counted.entrySet().stream()
+			.map(entry -> new DeathbankState.ItemStack(entry.getKey(), entry.getValue()))
+			.collect(Collectors.toList());
 	}
 
 	private static List<DeathbankState.ItemStack> toItemStacks(Item[] items)
