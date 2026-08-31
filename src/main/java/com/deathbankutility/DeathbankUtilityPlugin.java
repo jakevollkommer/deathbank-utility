@@ -126,7 +126,12 @@ public class DeathbankUtilityPlugin extends Plugin
 	// container reads null rather than empty, so this text is the reliable source.
 	private static final Pattern WINDOW_STACK_COUNT = Pattern.compile("Stack count:\\s*([\\d,]+)");
 
+	// The bag is destroyed on death and its contents are deposited in its place, so it
+	// must never be reported as sitting in the deathbank
+	private static final Set<Integer> LOOTING_BAG_IDS = Set.of(ItemID.LOOTING_BAG, ItemID.LOOTING_BAG_OPEN);
+
 	private static final String STATE_KEY = "state";
+	private static final String LOOTING_BAG_KEY = "lootingBag";
 	private static final int LOGIN_RECONCILE_TICKS = 25;
 	private static final int DEATH_RESOLVE_MIN_TICKS = 3;
 	private static final int DEATH_RESOLVE_TIMEOUT_TICKS = 50;
@@ -221,6 +226,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		overlayManager.add(warningOverlay);
 		overlayManager.add(lootingBagOverlay);
 		loadState();
+		loadLootingBag();
 		updatePanel();
 	}
 
@@ -278,6 +284,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	public void onRuneScapeProfileChanged(RuneScapeProfileChanged event)
 	{
 		loadState();
+		loadLootingBag();
 		updatePanel();
 	}
 
@@ -400,6 +407,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		{
 			lootingBagAtLastSight = countItems(Arrays.stream(event.getItemContainer().getItems()));
 			log.debug("Looting bag seen holding {} stacks", lootingBagAtLastSight.size());
+			saveLootingBag();
 			return;
 		}
 
@@ -582,6 +590,7 @@ public class DeathbankUtilityPlugin extends Plugin
 
 		List<DeathbankState.ItemStack> banked = new ArrayList<>(lost.entrySet().stream()
 			.filter(entry -> entry.getValue() > 0)
+			.filter(entry -> !LOOTING_BAG_IDS.contains(entry.getKey()))
 			.map(entry -> new DeathbankState.ItemStack(entry.getKey(), entry.getValue()))
 			.collect(Collectors.toList()));
 		// The looting bag empties into the deathbank as well, and its contents were
@@ -864,14 +873,21 @@ public class DeathbankUtilityPlugin extends Plugin
 		DeathbankState snapshot = state;
 		clientThread.invokeLater(() ->
 		{
-			List<DeathbankPanel.PanelItem> items = snapshot.getItems().stream()
-				.map(stack -> new DeathbankPanel.PanelItem(
+			Set<Integer> fromLootingBag = snapshot.getLootingBagItems().stream()
+				.map(DeathbankState.ItemStack::getId)
+				.collect(Collectors.toSet());
+			List<DeathbankPanel.PanelItem> items = new ArrayList<>();
+			List<DeathbankPanel.PanelItem> lootingBagItems = new ArrayList<>();
+			snapshot.getItems().forEach(stack ->
+			{
+				DeathbankPanel.PanelItem cell = new DeathbankPanel.PanelItem(
 					itemManager.getItemComposition(stack.getId()).getName(),
 					stack.getQuantity(),
-					itemManager.getImage(stack.getId(), stack.getQuantity(), stack.getQuantity() > 1)))
-				.collect(Collectors.toList());
+					itemManager.getImage(stack.getId(), stack.getQuantity(), stack.getQuantity() > 1));
+				(fromLootingBag.contains(stack.getId()) ? lootingBagItems : items).add(cell);
+			});
 			boolean awaitingConfirmation = isAwaitingLoginConfirmation();
-			SwingUtilities.invokeLater(() -> panel.update(snapshot, items, awaitingConfirmation));
+			SwingUtilities.invokeLater(() -> panel.update(snapshot, items, lootingBagItems, awaitingConfirmation));
 		});
 	}
 
@@ -907,6 +923,37 @@ public class DeathbankUtilityPlugin extends Plugin
 		{
 			log.warn("Discarding unparseable saved deathbank state", e);
 			return DeathbankState.unknown();
+		}
+	}
+
+	private void saveLootingBag()
+	{
+		configManager.setRSProfileConfiguration(DeathbankUtilityConfig.GROUP, LOOTING_BAG_KEY,
+			gson.toJson(toItemStacks(lootingBagAtLastSight)));
+		configManager.sendConfig();
+	}
+
+	private void loadLootingBag()
+	{
+		String json = configManager.getRSProfileConfiguration(DeathbankUtilityConfig.GROUP, LOOTING_BAG_KEY);
+		lootingBagAtLastSight = Map.of();
+		if (json == null)
+		{
+			return;
+		}
+		try
+		{
+			DeathbankState.ItemStack[] saved = gson.fromJson(json, DeathbankState.ItemStack[].class);
+			if (saved != null)
+			{
+				lootingBagAtLastSight = Arrays.stream(saved)
+					.collect(Collectors.toMap(DeathbankState.ItemStack::getId, DeathbankState.ItemStack::getQuantity,
+						Integer::sum, HashMap::new));
+			}
+		}
+		catch (JsonSyntaxException e)
+		{
+			log.warn("Discarding unparseable saved looting bag contents", e);
 		}
 	}
 

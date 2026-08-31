@@ -1,5 +1,6 @@
 package com.deathbankutility;
 
+import java.awt.Color;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.GridLayout;
@@ -34,11 +35,14 @@ class DeathbankPanel extends PluginPanel
 	// Panel width less our borders, and less the margins Swing's HTML body adds on
 	// top of the declared width, which is what pushed text past the panel edge
 	private static final int TEXT_WRAP_WIDTH = PANEL_WIDTH - 45;
+	private static final Color LOOTING_BAG_COLOR = new Color(90, 170, 235);
 
 	private final JLabel statusLabel = new JLabel();
 	private final JLabel detailLabel = new JLabel();
 	private final JLabel contentsLabel = new JLabel();
 	private final JPanel itemGrid = new JPanel();
+	private final JLabel lootingBagHeading = new JLabel();
+	private final JPanel lootingBagGrid = new JPanel();
 
 	DeathbankPanel()
 	{
@@ -57,9 +61,18 @@ class DeathbankPanel extends PluginPanel
 		header.add(contentsLabel);
 
 		itemGrid.setLayout(new GridLayout(0, ITEMS_PER_ROW, 3, 3));
+		lootingBagGrid.setLayout(new GridLayout(0, ITEMS_PER_ROW, 3, 3));
+		lootingBagHeading.setFont(FontManager.getRunescapeSmallFont());
+		lootingBagHeading.setForeground(LOOTING_BAG_COLOR);
+
+		JPanel grids = new JPanel();
+		grids.setLayout(new BoxLayout(grids, BoxLayout.Y_AXIS));
+		grids.add(itemGrid);
+		grids.add(lootingBagHeading);
+		grids.add(lootingBagGrid);
 
 		JPanel gridWrapper = new JPanel(new BorderLayout());
-		gridWrapper.add(itemGrid, BorderLayout.NORTH);
+		gridWrapper.add(grids, BorderLayout.NORTH);
 
 		// BoxLayout will not stretch a bare JLabel, so the disclaimer needs a
 		// full-width wrapper and an explicit wrap width to align with the rest
@@ -87,7 +100,7 @@ class DeathbankPanel extends PluginPanel
 		showInactive();
 	}
 
-	void update(DeathbankState state, List<PanelItem> items, boolean awaitingConfirmation)
+	void update(DeathbankState state, List<PanelItem> items, List<PanelItem> lootingBagItems, boolean awaitingConfirmation)
 	{
 		if (awaitingConfirmation)
 		{
@@ -106,10 +119,19 @@ class DeathbankPanel extends PluginPanel
 			+ ". Any unsafe death anywhere deletes these items." + feeSentence(state)));
 		contentsLabel.setText(contentsText(state, items));
 
+		// Split so the looting bag half can be re-bagged as a group rather than
+		// picked out of one undifferentiated pile
 		itemGrid.removeAll();
 		items.forEach(item -> itemGrid.add(buildItemCell(item)));
+
+		lootingBagGrid.removeAll();
+		lootingBagItems.forEach(item -> lootingBagGrid.add(buildItemCell(item)));
+		lootingBagHeading.setText(lootingBagItems.isEmpty() ? "" : wrapped("From your looting bag:"));
+
 		itemGrid.revalidate();
 		itemGrid.repaint();
+		lootingBagGrid.revalidate();
+		lootingBagGrid.repaint();
 	}
 
 	private void showChecking()
@@ -118,9 +140,7 @@ class DeathbankPanel extends PluginPanel
 		statusLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		detailLabel.setText(wrapped("Waiting for the game to confirm whether anything is stored."));
 		contentsLabel.setText("");
-		itemGrid.removeAll();
-		itemGrid.revalidate();
-		itemGrid.repaint();
+		clearGrids();
 	}
 
 	private void showInactive()
@@ -129,24 +149,23 @@ class DeathbankPanel extends PluginPanel
 		statusLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		detailLabel.setText(wrapped("Die at content with an item retrieval service and it will show up here."));
 		contentsLabel.setText("");
+		clearGrids();
+	}
+
+	private void clearGrids()
+	{
 		itemGrid.removeAll();
+		lootingBagGrid.removeAll();
+		lootingBagHeading.setText("");
 		itemGrid.revalidate();
 		itemGrid.repaint();
+		lootingBagGrid.revalidate();
+		lootingBagGrid.repaint();
 	}
 
 	private static String wrapped(String text)
 	{
 		return "<html><body style='margin:0;width:" + TEXT_WRAP_WIDTH + "px'>" + text + "</body></html>";
-	}
-
-	private static String lootingBagSentence(DeathbankState state)
-	{
-		int lootingBagStacks = state.getLootingBagItems().size();
-		if (lootingBagStacks == 0)
-		{
-			return "";
-		}
-		return " " + lootingBagStacks + " came from your looting bag, marked in the chest.";
 	}
 
 	private static String describeStacks(int stackCount)
@@ -172,7 +191,7 @@ class DeathbankPanel extends PluginPanel
 		String basis = state.isItemsVerified()
 			? "Verified from the retrieval interface:"
 			: "Estimated from your gear at death:";
-		return wrapped(basis + " " + describeStacks(items.size()) + lootingBagSentence(state));
+		return wrapped(basis + " " + describeStacks(items.size()));
 	}
 
 	private static JLabel buildItemCell(PanelItem item)
