@@ -188,6 +188,10 @@ public class DeathbankUtilityPlugin extends Plugin
 	// The client only learns the looting bag's contents when the player opens or fills it, so
 	// the last sighting is kept and stamped onto the deathbank at death
 	private Map<Integer, Integer> lootingBagAtLastSight = Map.of();
+	// What was carried a tick ago. ActorDeath can arrive after the server has already
+	// taken the items, so the previous tick is the last trustworthy reading.
+	private Map<Integer, Integer> carriedLastTick = Map.of();
+	private Map<Integer, Integer> carriedThisTick = Map.of();
 
 	private RetrievalService pendingDeathService;
 	private Map<Integer, Integer> pendingDeathSnapshot = Map.of();
@@ -484,7 +488,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 
 		pendingDeathService = service.get();
-		pendingDeathSnapshot = countCarriedItems();
+		pendingDeathSnapshot = carriedLastTick.isEmpty() ? countCarriedItems() : carriedLastTick;
 		pendingDeathLootingBagItems = toItemStacks(lootingBagAtLastSight);
 		lootingBagAtLastSight = Map.of();
 		pendingDeathTicks = 0;
@@ -518,6 +522,8 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
+		carriedLastTick = carriedThisTick;
+		carriedThisTick = countCarriedItems();
 		tickRetrievalWindow();
 		tickPendingDeath();
 		tickLoginReconcile();
@@ -568,17 +574,34 @@ public class DeathbankUtilityPlugin extends Plugin
 	{
 		RetrievalService service = pendingDeathService;
 		List<DeathbankState.ItemStack> lootingBagItems = pendingDeathLootingBagItems;
-		Map<Integer, Integer> lost = new HashMap<>(pendingDeathSnapshot);
+		Map<Integer, Integer> snapshot = pendingDeathSnapshot;
+		int ticksSinceDeath = pendingDeathTicks;
+		Map<Integer, Integer> lost = new HashMap<>(snapshot);
 		countCarriedItems().forEach((id, kept) -> lost.merge(id, -kept, Integer::sum));
 		clearPendingDeath();
 
-		List<DeathbankState.ItemStack> banked = lost.entrySet().stream()
+		List<DeathbankState.ItemStack> banked = new ArrayList<>(lost.entrySet().stream()
 			.filter(entry -> entry.getValue() > 0)
 			.map(entry -> new DeathbankState.ItemStack(entry.getKey(), entry.getValue()))
-			.collect(Collectors.toList());
+			.collect(Collectors.toList()));
+		// The looting bag empties into the deathbank as well, and its contents were
+		// never part of the carried diff
+		banked.addAll(lootingBagItems);
 
 		if (banked.isEmpty())
 		{
+			boolean stillWorthRetrying = ticksSinceDeath < DEATH_RESOLVE_TIMEOUT_TICKS;
+			if (stillWorthRetrying)
+			{
+				// The server can take the items several ticks after respawn, so put the
+				// snapshot back and look again rather than concluding nothing was lost.
+				// The tick count carries over, or the retry would never time out.
+				pendingDeathService = service;
+				pendingDeathSnapshot = snapshot;
+				pendingDeathLootingBagItems = lootingBagItems;
+				pendingDeathTicks = ticksSinceDeath;
+				return;
+			}
 			log.debug("Death at {} resolved: all items kept, no deathbank created", service.getDisplayName());
 			return;
 		}
