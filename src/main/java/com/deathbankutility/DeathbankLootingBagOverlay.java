@@ -37,10 +37,18 @@ class DeathbankLootingBagOverlay extends WidgetItemOverlay
 			return;
 		}
 
-		// Outline the item's own shape rather than boxing the slot, so the marking
-		// reads as part of the item instead of decoration around it
-		BufferedImage outline = itemManager.getItemOutline(itemId, widgetItem.getQuantity(), config.lootingBagColor());
+		// Outline the item's own shape rather than boxing the slot. Thin sprites like
+		// bones are almost all edge, so the outline alone swallows them: the item is
+		// drawn back over the top, leaving the colour as a halo around it.
 		Rectangle bounds = widgetItem.getCanvasBounds();
+		int quantity = widgetItem.getQuantity();
+		BufferedImage outline = itemManager.getItemOutline(itemId, quantity, config.lootingBagColor());
+		if (outline == null)
+		{
+			return;
+		}
+
 		graphics.drawImage(outline, bounds.x, bounds.y, null);
+		graphics.drawImage(itemManager.getImage(itemId, quantity, quantity > 1), bounds.x, bounds.y, null);
 	}
 }
