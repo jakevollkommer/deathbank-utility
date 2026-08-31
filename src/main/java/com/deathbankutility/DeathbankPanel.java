@@ -1,5 +1,6 @@
 package com.deathbankutility;
 
+import java.awt.Color;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.GridLayout;
@@ -13,7 +14,12 @@ import lombok.RequiredArgsConstructor;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
+import javax.swing.ImageIcon;
+import javax.swing.SwingUtilities;
+import net.runelite.api.gameval.ItemID;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.util.AsyncBufferedImage;
+import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.QuantityFormatter;
 
 /**
@@ -33,15 +39,28 @@ class DeathbankPanel extends PluginPanel
 	private static final int ITEMS_PER_ROW = 5;
 	// Panel width less our borders, and less the margins Swing's HTML body adds on
 	// top of the declared width, which is what pushed text past the panel edge
-	private static final int TEXT_WRAP_WIDTH = PANEL_WIDTH - 45;
+	private static final int TEXT_WRAP_WIDTH = PANEL_WIDTH - 60;
+	private static final Dimension MAX_ROW = new Dimension(PANEL_WIDTH - 20, Integer.MAX_VALUE);
+	private static final Color LOOTING_BAG_COLOR = new Color(0xFFD400);
 
 	private final JLabel statusLabel = new JLabel();
 	private final JLabel detailLabel = new JLabel();
 	private final JLabel contentsLabel = new JLabel();
 	private final JPanel itemGrid = new JPanel();
+	private final JLabel lootingBagHeading = new JLabel();
+	private final JPanel lootingBagGrid = new JPanel();
+	private JPanel lootingBagSection;
 
-	DeathbankPanel()
+	DeathbankPanel(ItemManager itemManager)
 	{
+		// The bag's own icon beside the heading, so the section names itself
+		AsyncBufferedImage lootingBagIcon = itemManager.getImage(ItemID.LOOTING_BAG);
+		lootingBagIcon.onLoaded(() -> SwingUtilities.invokeLater(() ->
+		{
+			lootingBagHeading.setIcon(new ImageIcon(ImageUtil.resizeImage(lootingBagIcon, 16, 16)));
+			lootingBagHeading.repaint();
+		}));
+
 		setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 
@@ -57,9 +76,32 @@ class DeathbankPanel extends PluginPanel
 		header.add(contentsLabel);
 
 		itemGrid.setLayout(new GridLayout(0, ITEMS_PER_ROW, 3, 3));
+		lootingBagGrid.setLayout(new GridLayout(0, ITEMS_PER_ROW, 3, 3));
+		lootingBagHeading.setFont(FontManager.getRunescapeSmallFont());
+		lootingBagHeading.setForeground(LOOTING_BAG_COLOR);
+		lootingBagHeading.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0));
+		lootingBagHeading.setIconTextGap(5);
+
+		// The looting bag half is boxed and tinted so it reads as its own group to
+		// re-bag, rather than more items in the same pile
+		lootingBagSection = new JPanel(new BorderLayout());
+		lootingBagSection.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createEmptyBorder(10, 0, 4, 2),
+			BorderFactory.createCompoundBorder(
+				BorderFactory.createMatteBorder(1, 1, 1, 1, LOOTING_BAG_COLOR),
+				BorderFactory.createEmptyBorder(6, 6, 6, 6))));
+		lootingBagSection.add(lootingBagHeading, BorderLayout.NORTH);
+		lootingBagSection.add(lootingBagGrid, BorderLayout.CENTER);
+		lootingBagSection.setVisible(false);
+
+		JPanel grids = new JPanel();
+		grids.setLayout(new BoxLayout(grids, BoxLayout.Y_AXIS));
+		grids.add(itemGrid);
+		grids.add(lootingBagSection);
+		grids.setMaximumSize(MAX_ROW);
 
 		JPanel gridWrapper = new JPanel(new BorderLayout());
-		gridWrapper.add(itemGrid, BorderLayout.NORTH);
+		gridWrapper.add(grids, BorderLayout.NORTH);
 
 		// BoxLayout will not stretch a bare JLabel, so the disclaimer needs a
 		// full-width wrapper and an explicit wrap width to align with the rest
@@ -76,9 +118,12 @@ class DeathbankPanel extends PluginPanel
 		footer.setBorder(BorderFactory.createEmptyBorder(12, 0, 0, 0));
 		footer.add(disclaimer);
 		footer.setAlignmentX(LEFT_ALIGNMENT);
+		footer.setMaximumSize(MAX_ROW);
 
 		header.setAlignmentX(LEFT_ALIGNMENT);
+		header.setMaximumSize(MAX_ROW);
 		gridWrapper.setAlignmentX(LEFT_ALIGNMENT);
+		gridWrapper.setMaximumSize(MAX_ROW);
 
 		add(header);
 		add(gridWrapper);
@@ -87,7 +132,7 @@ class DeathbankPanel extends PluginPanel
 		showInactive();
 	}
 
-	void update(DeathbankState state, List<PanelItem> items, boolean awaitingConfirmation)
+	void update(DeathbankState state, List<PanelItem> items, List<PanelItem> lootingBagItems, boolean awaitingConfirmation)
 	{
 		if (awaitingConfirmation)
 		{
@@ -106,10 +151,20 @@ class DeathbankPanel extends PluginPanel
 			+ ". Any unsafe death anywhere deletes these items." + feeSentence(state)));
 		contentsLabel.setText(contentsText(state, items));
 
+		// Split so the looting bag half can be re-bagged as a group rather than
+		// picked out of one undifferentiated pile
 		itemGrid.removeAll();
 		items.forEach(item -> itemGrid.add(buildItemCell(item)));
+
+		lootingBagGrid.removeAll();
+		lootingBagItems.forEach(item -> lootingBagGrid.add(buildItemCell(item)));
+		lootingBagHeading.setText("From your looting bag");
+		lootingBagSection.setVisible(!lootingBagItems.isEmpty());
+
 		itemGrid.revalidate();
 		itemGrid.repaint();
+		lootingBagGrid.revalidate();
+		lootingBagGrid.repaint();
 	}
 
 	private void showChecking()
@@ -118,9 +173,7 @@ class DeathbankPanel extends PluginPanel
 		statusLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		detailLabel.setText(wrapped("Waiting for the game to confirm whether anything is stored."));
 		contentsLabel.setText("");
-		itemGrid.removeAll();
-		itemGrid.revalidate();
-		itemGrid.repaint();
+		clearGrids();
 	}
 
 	private void showInactive()
@@ -129,14 +182,38 @@ class DeathbankPanel extends PluginPanel
 		statusLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		detailLabel.setText(wrapped("Die at content with an item retrieval service and it will show up here."));
 		contentsLabel.setText("");
+		clearGrids();
+	}
+
+	private void clearGrids()
+	{
 		itemGrid.removeAll();
+		lootingBagGrid.removeAll();
+		lootingBagSection.setVisible(false);
 		itemGrid.revalidate();
 		itemGrid.repaint();
+		lootingBagGrid.revalidate();
+		lootingBagGrid.repaint();
 	}
 
 	private static String wrapped(String text)
 	{
 		return "<html><body style='margin:0;width:" + TEXT_WRAP_WIDTH + "px'>" + text + "</body></html>";
+	}
+
+	/**
+	 * An estimate cannot include the looting bag unless the client has been shown its
+	 * contents, so say so rather than letting the count look complete.
+	 */
+	private static String unknownLootingBagWarning(DeathbankState state)
+	{
+		// Contents read from the chest are the whole truth, bag included, so the
+		// caveat only applies while the list is still an estimate
+		if (state.isItemsVerified() || !state.getLootingBagItems().isEmpty())
+		{
+			return "";
+		}
+		return " Anything in your looting bag is not counted here, the game never showed it to the client.";
 	}
 
 	private static String describeStacks(int stackCount)
@@ -162,7 +239,7 @@ class DeathbankPanel extends PluginPanel
 		String basis = state.isItemsVerified()
 			? "Verified from the retrieval interface:"
 			: "Estimated from your gear at death:";
-		return wrapped(basis + " " + describeStacks(items.size()));
+		return wrapped(basis + " " + describeStacks(items.size()) + unknownLootingBagWarning(state));
 	}
 
 	private static JLabel buildItemCell(PanelItem item)

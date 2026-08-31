@@ -50,10 +50,33 @@ public interface DeathbankUtilityConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "highlightLootingBagItems",
+		name = "Mark looting bag items",
+		description = "Mark the items in the retrieval interface that came out of your looting bag",
+		position = 4
+	)
+	default boolean highlightLootingBagItems()
+	{
+		return true;
+	}
+
+	@Alpha
+	@ConfigItem(
+		keyName = "lootingBagColor",
+		name = "Looting bag color",
+		description = "Outline color for items that came out of your looting bag",
+		position = 5
+	)
+	default Color lootingBagColor()
+	{
+		return new Color(0xFFD400);
+	}
+
+	@ConfigItem(
 		keyName = "showDamageText",
 		name = "On-screen damage warning",
 		description = "Flash DEATHBANK WARNING on screen when you take damage with an active deathbank",
-		position = 4
+		position = 6
 	)
 	default boolean showDamageText()
 	{
@@ -64,7 +87,7 @@ public interface DeathbankUtilityConfig extends Config
 		keyName = "damageNotification",
 		name = "Damage notification",
 		description = "Additional notification (sound, tray, focus request) when taking damage with an active deathbank",
-		position = 5
+		position = 7
 	)
 	default Notification damageNotification()
 	{
@@ -76,7 +99,7 @@ public interface DeathbankUtilityConfig extends Config
 		keyName = "damageWarningCooldown",
 		name = "Damage warning cooldown",
 		description = "Minimum game ticks between damage warnings (100 ticks = 1 minute)",
-		position = 6
+		position = 8
 	)
 	default int damageWarningCooldownTicks()
 	{

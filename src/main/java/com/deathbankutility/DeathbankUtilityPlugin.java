@@ -4,11 +4,10 @@ import com.google.common.base.Strings;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.google.inject.Provides;
-import java.awt.Color;
-import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,6 +61,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.LinkBrowser;
 import net.runelite.client.util.Text;
 
@@ -127,7 +127,12 @@ public class DeathbankUtilityPlugin extends Plugin
 	// container reads null rather than empty, so this text is the reliable source.
 	private static final Pattern WINDOW_STACK_COUNT = Pattern.compile("Stack count:\\s*([\\d,]+)");
 
+	// The bag is destroyed on death and its contents are deposited in its place, so it
+	// must never be reported as sitting in the deathbank
+	private static final Set<Integer> LOOTING_BAG_IDS = Set.of(ItemID.LOOTING_BAG, ItemID.LOOTING_BAG_OPEN);
+
 	private static final String STATE_KEY = "state";
+	private static final String LOOTING_BAG_KEY = "lootingBag";
 	private static final int LOGIN_RECONCILE_TICKS = 25;
 	private static final int DEATH_RESOLVE_MIN_TICKS = 3;
 	private static final int DEATH_RESOLVE_TIMEOUT_TICKS = 50;
@@ -163,6 +168,8 @@ public class DeathbankUtilityPlugin extends Plugin
 	private DeathbankChestOverlay chestOverlay;
 	@Inject
 	private DeathbankWarningOverlay warningOverlay;
+	@Inject
+	private DeathbankLootingBagOverlay lootingBagOverlay;
 
 	@Getter
 	private DeathbankState state = DeathbankState.unknown();
@@ -184,8 +191,17 @@ public class DeathbankUtilityPlugin extends Plugin
 
 	// A death in IRS content is resolved after respawn by diffing carried items,
 	// so the 3 items kept on death never count as banked
+	// The client only learns the looting bag's contents when the player opens or fills it, so
+	// the last sighting is kept and stamped onto the deathbank at death
+	private Map<Integer, Integer> lootingBagAtLastSight = Map.of();
+	// What was carried a tick ago. ActorDeath can arrive after the server has already
+	// taken the items, so the previous tick is the last trustworthy reading.
+	private Map<Integer, Integer> carriedLastTick = Map.of();
+	private Map<Integer, Integer> carriedThisTick = Map.of();
+
 	private RetrievalService pendingDeathService;
 	private Map<Integer, Integer> pendingDeathSnapshot = Map.of();
+	private List<DeathbankState.ItemStack> pendingDeathLootingBagItems = List.of();
 	private int pendingDeathTicks;
 
 	@Provides
@@ -198,7 +214,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	protected void startUp()
 	{
 		indicatorIcon = itemManager.getImage(ItemID.SKULL);
-		panel = new DeathbankPanel();
+		panel = new DeathbankPanel(itemManager);
 		navButton = NavigationButton.builder()
 			.tooltip("Deathbank Utility")
 			.icon(createPanelIcon())
@@ -209,7 +225,9 @@ public class DeathbankUtilityPlugin extends Plugin
 		overlayManager.add(indicatorOverlay);
 		overlayManager.add(chestOverlay);
 		overlayManager.add(warningOverlay);
+		overlayManager.add(lootingBagOverlay);
 		loadState();
+		loadLootingBag();
 		updatePanel();
 	}
 
@@ -221,6 +239,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		overlayManager.remove(indicatorOverlay);
 		overlayManager.remove(chestOverlay);
 		overlayManager.remove(warningOverlay);
+		overlayManager.remove(lootingBagOverlay);
 		retrievalObjects.clear();
 		retrievalNpcs.clear();
 		retrievalWindowOpen = false;
@@ -266,6 +285,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	public void onRuneScapeProfileChanged(RuneScapeProfileChanged event)
 	{
 		loadState();
+		loadLootingBag();
 		updatePanel();
 	}
 
@@ -384,6 +404,22 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
+		if (event.getContainerId() == InventoryID.LOOTING_BAG)
+		{
+			lootingBagAtLastSight = countItems(Arrays.stream(event.getItemContainer().getItems()));
+			log.debug("Looting bag seen holding {} stacks", lootingBagAtLastSight.size());
+			saveLootingBag();
+			return;
+		}
+
+		boolean carriedItemsChanged = event.getContainerId() == InventoryID.INV
+			|| event.getContainerId() == InventoryID.WORN;
+		if (carriedItemsChanged)
+		{
+			clearIfInferredItemsCameBack();
+			return;
+		}
+
 		if (event.getContainerId() != InventoryID.GRAVESTONE)
 		{
 			return;
@@ -404,6 +440,33 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 		applyVerifiedContents(event.getItemContainer().getItems());
+	}
+
+	/**
+	 * Not every unsafe death banks items. A death inside the Theatre of Blood holds
+	 * them until the raid ends and hands them back, so the post-respawn diff can
+	 * infer a deathbank that never existed. Getting those exact items back in hand is
+	 * positive proof the inference was wrong, which is safe to act on, unlike the
+	 * absence of a signal.
+	 */
+	private void clearIfInferredItemsCameBack()
+	{
+		boolean inferredBank = state.isActive() && !state.isItemsVerified() && !state.getItems().isEmpty();
+		if (!inferredBank)
+		{
+			return;
+		}
+
+		Map<Integer, Integer> carried = countCarriedItems();
+		boolean everythingBack = state.getItems().stream()
+			.allMatch(stack -> carried.getOrDefault(stack.getId(), 0) >= stack.getQuantity());
+		if (!everythingBack)
+		{
+			return;
+		}
+
+		log.debug("All {} inferred stacks are back in hand; clearing mistaken deathbank", state.getItems().size());
+		transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
 	}
 
 	@Subscribe
@@ -434,7 +497,9 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 
 		pendingDeathService = service.get();
-		pendingDeathSnapshot = countCarriedItems();
+		pendingDeathSnapshot = carriedLastTick.isEmpty() ? countCarriedItems() : carriedLastTick;
+		pendingDeathLootingBagItems = toItemStacks(lootingBagAtLastSight);
+		lootingBagAtLastSight = Map.of();
 		pendingDeathTicks = 0;
 		log.debug("Death in {} region; will resolve banked items after respawn", pendingDeathService.getDisplayName());
 	}
@@ -466,6 +531,8 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
+		carriedLastTick = carriedThisTick;
+		carriedThisTick = countCarriedItems();
 		tickRetrievalWindow();
 		tickPendingDeath();
 		tickLoginReconcile();
@@ -509,43 +576,64 @@ public class DeathbankUtilityPlugin extends Plugin
 		{
 			return;
 		}
-		resolvePendingDeath();
+		resolvePendingDeath(timedOut);
 	}
 
-	private void resolvePendingDeath()
+	/**
+	 * The server takes items over several ticks, and the looting bag contents are
+	 * known immediately, so the first non-empty result is not the final one. The
+	 * estimate is refreshed every tick until the timeout, or until the retrieval
+	 * interface supplies the real contents.
+	 */
+	private void resolvePendingDeath(boolean finalPass)
 	{
-		RetrievalService service = pendingDeathService;
 		Map<Integer, Integer> lost = new HashMap<>(pendingDeathSnapshot);
-		countCarriedItems().forEach((id, kept) -> lost.merge(id, -kept, Integer::sum));
-		clearPendingDeath();
+		countCarriedItems().forEach((id, stillHeld) -> lost.merge(id, -stillHeld, Integer::sum));
 
 		List<DeathbankState.ItemStack> banked = lost.entrySet().stream()
 			.filter(entry -> entry.getValue() > 0)
+			// The bag is destroyed and its contents deposited in its place
+			.filter(entry -> !LOOTING_BAG_IDS.contains(entry.getKey()))
 			.map(entry -> new DeathbankState.ItemStack(entry.getKey(), entry.getValue()))
-			.collect(Collectors.toList());
+			.collect(Collectors.toCollection(ArrayList::new));
+		banked.addAll(pendingDeathLootingBagItems);
+		banked.sort(Comparator.comparingInt(DeathbankState.ItemStack::getId));
 
-		if (banked.isEmpty())
+		boolean changed = !banked.isEmpty() && !banked.equals(state.getItems());
+		if (changed)
 		{
-			log.debug("Death at {} resolved: all items kept, no deathbank created", service.getDisplayName());
-			return;
+			// A message may already have confirmed the bank, and it names the service
+			// more precisely than the region can, so recording items must not downgrade
+			// what is already known
+			boolean alreadyConfirmed = state.isActive() && state.getConfidence() == Confidence.VERIFIED;
+			Confidence confidence = alreadyConfirmed ? Confidence.VERIFIED : Confidence.INFERRED;
+			RetrievalService labelled = alreadyConfirmed && state.getService() != null
+				? state.getService() : pendingDeathService;
+
+			log.debug("Death at {} estimated: ~{} stacks banked {}, labelled {} ({}), looting bag held {}",
+				pendingDeathService.getDisplayName(), banked.size(), describe(banked), labelled, confidence,
+				describe(pendingDeathLootingBagItems));
+			transitionTo(DeathbankState.active(confidence, labelled, state.getWindowTitle(), banked, false,
+				pendingDeathLootingBagItems));
 		}
 
-		// A message may already have confirmed the bank, and it names the service more
-		// precisely than the region can (Phosani's and the Nightmare share a region),
-		// so recording the items must not downgrade what is already known
-		boolean alreadyConfirmed = state.isActive() && state.getConfidence() == Confidence.VERIFIED;
-		Confidence confidence = alreadyConfirmed ? Confidence.VERIFIED : Confidence.INFERRED;
-		RetrievalService labelled = alreadyConfirmed && state.getService() != null ? state.getService() : service;
-
-		log.debug("Death at {} resolved: ~{} stacks banked, labelled {} ({})",
-			service.getDisplayName(), banked.size(), labelled, confidence);
-		transitionTo(DeathbankState.active(confidence, labelled, state.getWindowTitle(), banked, false));
+		if (!finalPass)
+		{
+			return;
+		}
+		if (banked.isEmpty())
+		{
+			log.debug("Death at {} resolved: all items kept, no deathbank created",
+				pendingDeathService.getDisplayName());
+		}
+		clearPendingDeath();
 	}
 
 	private void clearPendingDeath()
 	{
 		pendingDeathService = null;
 		pendingDeathSnapshot = Map.of();
+		pendingDeathLootingBagItems = List.of();
 		pendingDeathTicks = 0;
 	}
 
@@ -701,9 +789,11 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 
+		clearPendingDeath();
 		String locationText = service != null ? null : firstNonBlank(windowTexts).orElse(state.getWindowTitle());
-		log.debug("Verified deathbank contents: {} stacks, service {}, window texts {}", stacks.size(), service, windowTexts);
-		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, locationText, stacks, true));
+		log.debug("Verified deathbank contents: {} stacks {}, service {}, window texts {}",
+			stacks.size(), describe(stacks), service, windowTexts);
+		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, locationText, stacks, true, state.getLootingBagItems()));
 	}
 
 	/**
@@ -777,7 +867,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 		// Keep any previously recorded items; they stay flagged as estimates
 		// until the retrieval interface confirms them
-		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, windowTitle, state.getItems(), state.isItemsVerified()));
+		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, windowTitle, state.getItems(), state.isItemsVerified(), state.getLootingBagItems()));
 	}
 
 	// --- Side panel ---
@@ -787,27 +877,29 @@ public class DeathbankUtilityPlugin extends Plugin
 		DeathbankState snapshot = state;
 		clientThread.invokeLater(() ->
 		{
-			List<DeathbankPanel.PanelItem> items = snapshot.getItems().stream()
-				.map(stack -> new DeathbankPanel.PanelItem(
+			Set<Integer> fromLootingBag = snapshot.getLootingBagItems().stream()
+				.map(DeathbankState.ItemStack::getId)
+				.collect(Collectors.toSet());
+			List<DeathbankPanel.PanelItem> items = new ArrayList<>();
+			List<DeathbankPanel.PanelItem> lootingBagItems = new ArrayList<>();
+			snapshot.getItems().forEach(stack ->
+			{
+				DeathbankPanel.PanelItem cell = new DeathbankPanel.PanelItem(
 					itemManager.getItemComposition(stack.getId()).getName(),
 					stack.getQuantity(),
-					itemManager.getImage(stack.getId(), stack.getQuantity(), stack.getQuantity() > 1)))
-				.collect(Collectors.toList());
+					itemManager.getImage(stack.getId(), stack.getQuantity(), stack.getQuantity() > 1));
+				(fromLootingBag.contains(stack.getId()) ? lootingBagItems : items).add(cell);
+			});
 			boolean awaitingConfirmation = isAwaitingLoginConfirmation();
-			SwingUtilities.invokeLater(() -> panel.update(snapshot, items, awaitingConfirmation));
+			SwingUtilities.invokeLater(() -> panel.update(snapshot, items, lootingBagItems, awaitingConfirmation));
 		});
 	}
 
 	private static BufferedImage createPanelIcon()
 	{
-		BufferedImage icon = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
-		Graphics2D g = icon.createGraphics();
-		g.setColor(new Color(140, 25, 25));
-		g.fillRoundRect(1, 3, 14, 11, 4, 4);
-		g.setColor(new Color(230, 200, 120));
-		g.fillRect(1, 7, 14, 2);
-		g.dispose();
-		return icon;
+		// The Deadman bank key: a skull headed key, which is as close as the game gets
+		// to a symbol for "your items are locked away because you died"
+		return ImageUtil.loadImageResource(DeathbankUtilityPlugin.class, "panel_icon.png");
 	}
 
 	// --- Persistence (per RS profile) ---
@@ -838,6 +930,37 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 	}
 
+	private void saveLootingBag()
+	{
+		configManager.setRSProfileConfiguration(DeathbankUtilityConfig.GROUP, LOOTING_BAG_KEY,
+			gson.toJson(toItemStacks(lootingBagAtLastSight)));
+		configManager.sendConfig();
+	}
+
+	private void loadLootingBag()
+	{
+		String json = configManager.getRSProfileConfiguration(DeathbankUtilityConfig.GROUP, LOOTING_BAG_KEY);
+		lootingBagAtLastSight = Map.of();
+		if (json == null)
+		{
+			return;
+		}
+		try
+		{
+			DeathbankState.ItemStack[] saved = gson.fromJson(json, DeathbankState.ItemStack[].class);
+			if (saved != null)
+			{
+				lootingBagAtLastSight = Arrays.stream(saved)
+					.collect(Collectors.toMap(DeathbankState.ItemStack::getId, DeathbankState.ItemStack::getQuantity,
+						Integer::sum, HashMap::new));
+			}
+		}
+		catch (JsonSyntaxException e)
+		{
+			log.warn("Discarding unparseable saved looting bag contents", e);
+		}
+	}
+
 	private void saveState()
 	{
 		configManager.setRSProfileConfiguration(DeathbankUtilityConfig.GROUP, STATE_KEY, gson.toJson(state));
@@ -865,12 +988,24 @@ public class DeathbankUtilityPlugin extends Plugin
 
 	private Map<Integer, Integer> countCarriedItems()
 	{
-		return Stream.of(InventoryID.INV, InventoryID.WORN)
+		return countItems(Stream.of(InventoryID.INV, InventoryID.WORN)
 			.map(client::getItemContainer)
 			.filter(Objects::nonNull)
-			.flatMap(container -> Arrays.stream(container.getItems()))
+			.flatMap(container -> Arrays.stream(container.getItems())));
+	}
+
+	private static Map<Integer, Integer> countItems(Stream<Item> items)
+	{
+		return items
 			.filter(DeathbankUtilityPlugin::isRealItem)
 			.collect(Collectors.toMap(Item::getId, Item::getQuantity, Integer::sum, HashMap::new));
+	}
+
+	private static List<DeathbankState.ItemStack> toItemStacks(Map<Integer, Integer> counted)
+	{
+		return counted.entrySet().stream()
+			.map(entry -> new DeathbankState.ItemStack(entry.getKey(), entry.getValue()))
+			.collect(Collectors.toList());
 	}
 
 	private static List<DeathbankState.ItemStack> toItemStacks(Item[] items)
@@ -884,6 +1019,14 @@ public class DeathbankUtilityPlugin extends Plugin
 	private static String sanitize(String text)
 	{
 		return MESSAGE_MACRO.matcher(Text.removeTags(text)).replaceAll("").trim();
+	}
+
+	/** Item names for the debug log, so a count can be checked against what is really there. */
+	private String describe(List<DeathbankState.ItemStack> stacks)
+	{
+		return stacks.stream()
+			.map(stack -> itemManager.getItemComposition(stack.getId()).getName() + " x" + stack.getQuantity())
+			.collect(Collectors.joining(", ", "[", "]"));
 	}
 
 	private static boolean isRealItem(Item item)

@@ -115,6 +115,30 @@ budget test dummy for anything requiring a real death. Check items off per build
       confidence, estimated/verified label, item grid with icons and name+quantity
       tooltips. Shows "No active deathbank" when inactive.
 
+## F. Looting bag marking
+
+- [ ] **F1 — Bag items marked.** Open the looting bag (so the client sees its
+      contents), die at content with a retrieval service, then open the retrieval
+      chest. Items that came out of the looting bag are outlined in the configured color.
+      Verify against the known ordering: looting bag contents sit after the worn and
+      inventory items, with the ammo slot typically the last non looting bag slot.
+- [ ] **F2 — Stale looting bag snapshot.** Die without having opened the looting bag
+      this session.
+      Nothing is marked (the client never saw the contents), and the plugin does not
+      guess. The panel omits the looting bag sentence.
+- [ ] **F3 — Same item in both places.** Carry an item that is also in the looting bag (e.g.
+      brews). Note whether both copies are marked; matching is by item id, so this is
+      expected and should be documented rather than silently wrong.
+- [ ] **F4 — Looting bag emptied by the death.** After dying, the looting bag is empty, so a second
+      death with no re-fill marks nothing.
+
+## G. Mistaken inference (Theatre of Blood)
+
+- [ ] **G1 — Individual ToB death does not leave a phantom bank.** Die inside ToB
+      without a team wipe. The plugin infers a bank (items left your possession), but
+      when the raid ends and the items are handed back, it clears itself
+      ("inferred stacks are back in hand"). Verify the indicator disappears.
+
 ## E2. Stale state at login (regression guard)
 
 - [ ] **E0 — No false warning at login.** With saved active state that is no longer
