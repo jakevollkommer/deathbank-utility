@@ -214,7 +214,7 @@ public class DeathbankUtilityPlugin extends Plugin
 	protected void startUp()
 	{
 		indicatorIcon = itemManager.getImage(ItemID.SKULL);
-		panel = new DeathbankPanel();
+		panel = new DeathbankPanel(itemManager);
 		navButton = NavigationButton.builder()
 			.tooltip("Deathbank Utility")
 			.icon(createPanelIcon())

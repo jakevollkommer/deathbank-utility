@@ -6,7 +6,6 @@ import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import javax.inject.Inject;
 import net.runelite.api.gameval.InterfaceID;
-import net.runelite.api.gameval.ItemID;
 import net.runelite.api.widgets.WidgetItem;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.overlay.WidgetItemOverlay;
@@ -17,8 +16,6 @@ import net.runelite.client.ui.overlay.WidgetItemOverlay;
  */
 class DeathbankLootingBagOverlay extends WidgetItemOverlay
 {
-	private static final int BADGE_SIZE = 11;
-
 	private final DeathbankUtilityPlugin plugin;
 	private final DeathbankUtilityConfig config;
 	private final ItemManager itemManager;
@@ -40,19 +37,10 @@ class DeathbankLootingBagOverlay extends WidgetItemOverlay
 			return;
 		}
 
-		Color color = config.lootingBagColor();
+		// Outline the item's own shape rather than boxing the slot, so the marking
+		// reads as part of the item instead of decoration around it
+		BufferedImage outline = itemManager.getItemOutline(itemId, widgetItem.getQuantity(), config.lootingBagColor());
 		Rectangle bounds = widgetItem.getCanvasBounds();
-
-		// A corner badge of the bag itself, so the marking says what it means rather
-		// than relying on the player remembering what the colour stands for
-		BufferedImage bagIcon = itemManager.getImage(ItemID.LOOTING_BAG);
-		if (bagIcon != null)
-		{
-			graphics.drawImage(bagIcon, bounds.x + bounds.width - BADGE_SIZE,
-				bounds.y + bounds.height - BADGE_SIZE, BADGE_SIZE, BADGE_SIZE, null);
-		}
-
-		graphics.setColor(color);
-		graphics.drawRect(bounds.x, bounds.y, bounds.width, bounds.height);
+		graphics.drawImage(outline, bounds.x, bounds.y, null);
 	}
 }

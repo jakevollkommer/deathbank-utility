@@ -14,7 +14,12 @@ import lombok.RequiredArgsConstructor;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
+import javax.swing.ImageIcon;
+import javax.swing.SwingUtilities;
+import net.runelite.api.gameval.ItemID;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.util.AsyncBufferedImage;
+import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.QuantityFormatter;
 
 /**
@@ -36,7 +41,7 @@ class DeathbankPanel extends PluginPanel
 	// top of the declared width, which is what pushed text past the panel edge
 	private static final int TEXT_WRAP_WIDTH = PANEL_WIDTH - 60;
 	private static final Dimension MAX_ROW = new Dimension(PANEL_WIDTH - 20, Integer.MAX_VALUE);
-	private static final Color LOOTING_BAG_COLOR = new Color(235, 190, 80);
+	private static final Color LOOTING_BAG_COLOR = new Color(0xFFD400);
 
 	private final JLabel statusLabel = new JLabel();
 	private final JLabel detailLabel = new JLabel();
@@ -46,8 +51,16 @@ class DeathbankPanel extends PluginPanel
 	private final JPanel lootingBagGrid = new JPanel();
 	private JPanel lootingBagSection;
 
-	DeathbankPanel()
+	DeathbankPanel(ItemManager itemManager)
 	{
+		// The bag's own icon beside the heading, so the section names itself
+		AsyncBufferedImage lootingBagIcon = itemManager.getImage(ItemID.LOOTING_BAG);
+		lootingBagIcon.onLoaded(() -> SwingUtilities.invokeLater(() ->
+		{
+			lootingBagHeading.setIcon(new ImageIcon(ImageUtil.resizeImage(lootingBagIcon, 16, 16)));
+			lootingBagHeading.repaint();
+		}));
+
 		setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 
@@ -66,14 +79,17 @@ class DeathbankPanel extends PluginPanel
 		lootingBagGrid.setLayout(new GridLayout(0, ITEMS_PER_ROW, 3, 3));
 		lootingBagHeading.setFont(FontManager.getRunescapeSmallFont());
 		lootingBagHeading.setForeground(LOOTING_BAG_COLOR);
-		lootingBagHeading.setBorder(BorderFactory.createEmptyBorder(6, 0, 3, 0));
+		lootingBagHeading.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0));
+		lootingBagHeading.setIconTextGap(5);
 
 		// The looting bag half is boxed and tinted so it reads as its own group to
 		// re-bag, rather than more items in the same pile
 		lootingBagSection = new JPanel(new BorderLayout());
 		lootingBagSection.setBorder(BorderFactory.createCompoundBorder(
-			BorderFactory.createMatteBorder(1, 1, 1, 1, LOOTING_BAG_COLOR),
-			BorderFactory.createEmptyBorder(4, 4, 4, 4)));
+			BorderFactory.createEmptyBorder(10, 0, 4, 2),
+			BorderFactory.createCompoundBorder(
+				BorderFactory.createMatteBorder(1, 1, 1, 1, LOOTING_BAG_COLOR),
+				BorderFactory.createEmptyBorder(6, 6, 6, 6))));
 		lootingBagSection.add(lootingBagHeading, BorderLayout.NORTH);
 		lootingBagSection.add(lootingBagGrid, BorderLayout.CENTER);
 		lootingBagSection.setVisible(false);

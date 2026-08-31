@@ -69,7 +69,7 @@ public interface DeathbankUtilityConfig extends Config
 	)
 	default Color lootingBagColor()
 	{
-		return new Color(235, 190, 80, 230);
+		return new Color(0xFFD400);
 	}
 
 	@ConfigItem(
