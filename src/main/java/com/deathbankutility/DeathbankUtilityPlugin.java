@@ -4,8 +4,6 @@ import com.google.common.base.Strings;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.google.inject.Provides;
-import java.awt.Color;
-import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -62,6 +60,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.LinkBrowser;
 import net.runelite.client.util.Text;
 
@@ -855,14 +854,9 @@ public class DeathbankUtilityPlugin extends Plugin
 
 	private static BufferedImage createPanelIcon()
 	{
-		BufferedImage icon = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
-		Graphics2D g = icon.createGraphics();
-		g.setColor(new Color(140, 25, 25));
-		g.fillRoundRect(1, 3, 14, 11, 4, 4);
-		g.setColor(new Color(230, 200, 120));
-		g.fillRect(1, 7, 14, 2);
-		g.dispose();
-		return icon;
+		// The Deadman bank key: a skull headed key, which is as close as the game gets
+		// to a symbol for "your items are locked away because you died"
+		return ImageUtil.loadImageResource(DeathbankUtilityPlugin.class, "panel_icon.png");
 	}
 
 	// --- Persistence (per RS profile) ---
