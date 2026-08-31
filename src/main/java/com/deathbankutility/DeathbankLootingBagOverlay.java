@@ -6,6 +6,7 @@ import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import javax.inject.Inject;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.api.widgets.WidgetItem;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.overlay.WidgetItemOverlay;
@@ -16,6 +17,8 @@ import net.runelite.client.ui.overlay.WidgetItemOverlay;
  */
 class DeathbankLootingBagOverlay extends WidgetItemOverlay
 {
+	private static final int BADGE_SIZE = 14;
+
 	private final DeathbankUtilityPlugin plugin;
 	private final DeathbankUtilityConfig config;
 	private final ItemManager itemManager;
@@ -50,5 +53,11 @@ class DeathbankLootingBagOverlay extends WidgetItemOverlay
 
 		graphics.drawImage(outline, bounds.x, bounds.y, null);
 		graphics.drawImage(itemManager.getImage(itemId, quantity, quantity > 1), bounds.x, bounds.y, null);
+
+		// A bag badge in the corner, where item charges sit, so the marking names
+		// itself rather than relying on the colour being remembered
+		BufferedImage badge = itemManager.getImage(ItemID.LOOTING_BAG);
+		graphics.drawImage(badge, bounds.x + bounds.width - BADGE_SIZE,
+			bounds.y + bounds.height - BADGE_SIZE, BADGE_SIZE, BADGE_SIZE, null);
 	}
 }
