@@ -622,8 +622,8 @@ public class DeathbankUtilityPlugin extends Plugin
 		Confidence confidence = alreadyConfirmed ? Confidence.VERIFIED : Confidence.INFERRED;
 		RetrievalService labelled = alreadyConfirmed && state.getService() != null ? state.getService() : service;
 
-		log.debug("Death at {} resolved: ~{} stacks banked, labelled {} ({})",
-			service.getDisplayName(), banked.size(), labelled, confidence);
+		log.debug("Death at {} resolved: ~{} stacks banked {}, labelled {} ({}), looting bag held {}",
+			service.getDisplayName(), banked.size(), describe(banked), labelled, confidence, describe(lootingBagItems));
 		transitionTo(DeathbankState.active(confidence, labelled, state.getWindowTitle(), banked, false, lootingBagItems));
 	}
 
@@ -788,7 +788,8 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 
 		String locationText = service != null ? null : firstNonBlank(windowTexts).orElse(state.getWindowTitle());
-		log.debug("Verified deathbank contents: {} stacks, service {}, window texts {}", stacks.size(), service, windowTexts);
+		log.debug("Verified deathbank contents: {} stacks {}, service {}, window texts {}",
+			stacks.size(), describe(stacks), service, windowTexts);
 		transitionTo(DeathbankState.active(Confidence.VERIFIED, service, locationText, stacks, true, state.getLootingBagItems()));
 	}
 
@@ -1015,6 +1016,14 @@ public class DeathbankUtilityPlugin extends Plugin
 	private static String sanitize(String text)
 	{
 		return MESSAGE_MACRO.matcher(Text.removeTags(text)).replaceAll("").trim();
+	}
+
+	/** Item names for the debug log, so a count can be checked against what is really there. */
+	private String describe(List<DeathbankState.ItemStack> stacks)
+	{
+		return stacks.stream()
+			.map(stack -> itemManager.getItemComposition(stack.getId()).getName() + " x" + stack.getQuantity())
+			.collect(Collectors.joining(", ", "[", "]"));
 	}
 
 	private static boolean isRealItem(Item item)
