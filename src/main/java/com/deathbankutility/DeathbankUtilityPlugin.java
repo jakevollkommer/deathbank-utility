@@ -404,13 +404,6 @@ public class DeathbankUtilityPlugin extends Plugin
 	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
-		boolean noisyContainer = event.getContainerId() == InventoryID.INV
-			|| event.getContainerId() == InventoryID.WORN;
-		if (log.isDebugEnabled() && !noisyContainer)
-		{
-			log.debug("Container {} changed: {} items", event.getContainerId(), event.getItemContainer().count());
-		}
-
 		if (event.getContainerId() == InventoryID.LOOTING_BAG)
 		{
 			lootingBagAtLastSight = countItems(Arrays.stream(event.getItemContainer().getItems()));
