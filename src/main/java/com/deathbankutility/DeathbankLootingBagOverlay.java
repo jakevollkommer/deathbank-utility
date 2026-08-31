@@ -17,7 +17,7 @@ import net.runelite.client.ui.overlay.WidgetItemOverlay;
  */
 class DeathbankLootingBagOverlay extends WidgetItemOverlay
 {
-	private static final int BADGE_SIZE = 14;
+	private static final int BADGE_SIZE = 17;
 
 	private final DeathbankUtilityPlugin plugin;
 	private final DeathbankUtilityConfig config;
