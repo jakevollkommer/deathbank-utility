@@ -168,6 +168,19 @@ class DeathbankPanel extends PluginPanel
 		return "<html><body style='margin:0;width:" + TEXT_WRAP_WIDTH + "px'>" + text + "</body></html>";
 	}
 
+	/**
+	 * An estimate cannot include the looting bag unless the client has been shown its
+	 * contents, so say so rather than letting the count look complete.
+	 */
+	private static String unknownLootingBagWarning(DeathbankState state)
+	{
+		if (!state.getLootingBagItems().isEmpty())
+		{
+			return "";
+		}
+		return " Anything in your looting bag is not counted here, the game never showed it to the client.";
+	}
+
 	private static String describeStacks(int stackCount)
 	{
 		return stackCount + (stackCount == 1 ? " item stack." : " item stacks.");
@@ -191,7 +204,7 @@ class DeathbankPanel extends PluginPanel
 		String basis = state.isItemsVerified()
 			? "Verified from the retrieval interface:"
 			: "Estimated from your gear at death:";
-		return wrapped(basis + " " + describeStacks(items.size()));
+		return wrapped(basis + " " + describeStacks(items.size()) + unknownLootingBagWarning(state));
 	}
 
 	private static JLabel buildItemCell(PanelItem item)
