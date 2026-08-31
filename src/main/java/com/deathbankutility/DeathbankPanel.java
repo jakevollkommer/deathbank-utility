@@ -174,7 +174,9 @@ class DeathbankPanel extends PluginPanel
 	 */
 	private static String unknownLootingBagWarning(DeathbankState state)
 	{
-		if (!state.getLootingBagItems().isEmpty())
+		// Contents read from the chest are the whole truth, bag included, so the
+		// caveat only applies while the list is still an estimate
+		if (state.isItemsVerified() || !state.getLootingBagItems().isEmpty())
 		{
 			return "";
 		}
