@@ -7,6 +7,7 @@ import com.google.inject.Provides;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -582,56 +583,57 @@ public class DeathbankUtilityPlugin extends Plugin
 		{
 			return;
 		}
-		resolvePendingDeath();
+		resolvePendingDeath(timedOut);
 	}
 
-	private void resolvePendingDeath()
+	/**
+	 * The server takes items over several ticks, and the looting bag contents are
+	 * known immediately, so the first non-empty result is not the final one. The
+	 * estimate is refreshed every tick until the timeout, or until the retrieval
+	 * interface supplies the real contents.
+	 */
+	private void resolvePendingDeath(boolean finalPass)
 	{
-		RetrievalService service = pendingDeathService;
-		List<DeathbankState.ItemStack> lootingBagItems = pendingDeathLootingBagItems;
-		Map<Integer, Integer> snapshot = pendingDeathSnapshot;
-		int ticksSinceDeath = pendingDeathTicks;
-		Map<Integer, Integer> lost = new HashMap<>(snapshot);
-		countCarriedItems().forEach((id, kept) -> lost.merge(id, -kept, Integer::sum));
-		clearPendingDeath();
+		Map<Integer, Integer> lost = new HashMap<>(pendingDeathSnapshot);
+		countCarriedItems().forEach((id, stillHeld) -> lost.merge(id, -stillHeld, Integer::sum));
 
-		List<DeathbankState.ItemStack> banked = new ArrayList<>(lost.entrySet().stream()
+		List<DeathbankState.ItemStack> banked = lost.entrySet().stream()
 			.filter(entry -> entry.getValue() > 0)
+			// The bag is destroyed and its contents deposited in its place
 			.filter(entry -> !LOOTING_BAG_IDS.contains(entry.getKey()))
 			.map(entry -> new DeathbankState.ItemStack(entry.getKey(), entry.getValue()))
-			.collect(Collectors.toList()));
-		// The looting bag empties into the deathbank as well, and its contents were
-		// never part of the carried diff
-		banked.addAll(lootingBagItems);
+			.collect(Collectors.toCollection(ArrayList::new));
+		banked.addAll(pendingDeathLootingBagItems);
+		banked.sort(Comparator.comparingInt(DeathbankState.ItemStack::getId));
 
-		if (banked.isEmpty())
+		boolean changed = !banked.isEmpty() && !banked.equals(state.getItems());
+		if (changed)
 		{
-			boolean stillWorthRetrying = ticksSinceDeath < DEATH_RESOLVE_TIMEOUT_TICKS;
-			if (stillWorthRetrying)
-			{
-				// The server can take the items several ticks after respawn, so put the
-				// snapshot back and look again rather than concluding nothing was lost.
-				// The tick count carries over, or the retry would never time out.
-				pendingDeathService = service;
-				pendingDeathSnapshot = snapshot;
-				pendingDeathLootingBagItems = lootingBagItems;
-				pendingDeathTicks = ticksSinceDeath;
-				return;
-			}
-			log.debug("Death at {} resolved: all items kept, no deathbank created", service.getDisplayName());
-			return;
+			// A message may already have confirmed the bank, and it names the service
+			// more precisely than the region can, so recording items must not downgrade
+			// what is already known
+			boolean alreadyConfirmed = state.isActive() && state.getConfidence() == Confidence.VERIFIED;
+			Confidence confidence = alreadyConfirmed ? Confidence.VERIFIED : Confidence.INFERRED;
+			RetrievalService labelled = alreadyConfirmed && state.getService() != null
+				? state.getService() : pendingDeathService;
+
+			log.debug("Death at {} estimated: ~{} stacks banked {}, labelled {} ({}), looting bag held {}",
+				pendingDeathService.getDisplayName(), banked.size(), describe(banked), labelled, confidence,
+				describe(pendingDeathLootingBagItems));
+			transitionTo(DeathbankState.active(confidence, labelled, state.getWindowTitle(), banked, false,
+				pendingDeathLootingBagItems));
 		}
 
-		// A message may already have confirmed the bank, and it names the service more
-		// precisely than the region can (Phosani's and the Nightmare share a region),
-		// so recording the items must not downgrade what is already known
-		boolean alreadyConfirmed = state.isActive() && state.getConfidence() == Confidence.VERIFIED;
-		Confidence confidence = alreadyConfirmed ? Confidence.VERIFIED : Confidence.INFERRED;
-		RetrievalService labelled = alreadyConfirmed && state.getService() != null ? state.getService() : service;
-
-		log.debug("Death at {} resolved: ~{} stacks banked {}, labelled {} ({}), looting bag held {}",
-			service.getDisplayName(), banked.size(), describe(banked), labelled, confidence, describe(lootingBagItems));
-		transitionTo(DeathbankState.active(confidence, labelled, state.getWindowTitle(), banked, false, lootingBagItems));
+		if (!finalPass)
+		{
+			return;
+		}
+		if (banked.isEmpty())
+		{
+			log.debug("Death at {} resolved: all items kept, no deathbank created",
+				pendingDeathService.getDisplayName());
+		}
+		clearPendingDeath();
 	}
 
 	private void clearPendingDeath()
@@ -794,6 +796,7 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 
+		clearPendingDeath();
 		String locationText = service != null ? null : firstNonBlank(windowTexts).orElse(state.getWindowTitle());
 		log.debug("Verified deathbank contents: {} stacks {}, service {}, window texts {}",
 			stacks.size(), describe(stacks), service, windowTexts);

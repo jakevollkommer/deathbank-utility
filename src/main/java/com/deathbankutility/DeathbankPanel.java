@@ -34,8 +34,9 @@ class DeathbankPanel extends PluginPanel
 	private static final int ITEMS_PER_ROW = 5;
 	// Panel width less our borders, and less the margins Swing's HTML body adds on
 	// top of the declared width, which is what pushed text past the panel edge
-	private static final int TEXT_WRAP_WIDTH = PANEL_WIDTH - 45;
-	private static final Color LOOTING_BAG_COLOR = new Color(90, 170, 235);
+	private static final int TEXT_WRAP_WIDTH = PANEL_WIDTH - 60;
+	private static final Dimension MAX_ROW = new Dimension(PANEL_WIDTH - 20, Integer.MAX_VALUE);
+	private static final Color LOOTING_BAG_COLOR = new Color(235, 190, 80);
 
 	private final JLabel statusLabel = new JLabel();
 	private final JLabel detailLabel = new JLabel();
@@ -43,6 +44,7 @@ class DeathbankPanel extends PluginPanel
 	private final JPanel itemGrid = new JPanel();
 	private final JLabel lootingBagHeading = new JLabel();
 	private final JPanel lootingBagGrid = new JPanel();
+	private JPanel lootingBagSection;
 
 	DeathbankPanel()
 	{
@@ -64,12 +66,23 @@ class DeathbankPanel extends PluginPanel
 		lootingBagGrid.setLayout(new GridLayout(0, ITEMS_PER_ROW, 3, 3));
 		lootingBagHeading.setFont(FontManager.getRunescapeSmallFont());
 		lootingBagHeading.setForeground(LOOTING_BAG_COLOR);
+		lootingBagHeading.setBorder(BorderFactory.createEmptyBorder(6, 0, 3, 0));
+
+		// The looting bag half is boxed and tinted so it reads as its own group to
+		// re-bag, rather than more items in the same pile
+		lootingBagSection = new JPanel(new BorderLayout());
+		lootingBagSection.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createMatteBorder(1, 1, 1, 1, LOOTING_BAG_COLOR),
+			BorderFactory.createEmptyBorder(4, 4, 4, 4)));
+		lootingBagSection.add(lootingBagHeading, BorderLayout.NORTH);
+		lootingBagSection.add(lootingBagGrid, BorderLayout.CENTER);
+		lootingBagSection.setVisible(false);
 
 		JPanel grids = new JPanel();
 		grids.setLayout(new BoxLayout(grids, BoxLayout.Y_AXIS));
 		grids.add(itemGrid);
-		grids.add(lootingBagHeading);
-		grids.add(lootingBagGrid);
+		grids.add(lootingBagSection);
+		grids.setMaximumSize(MAX_ROW);
 
 		JPanel gridWrapper = new JPanel(new BorderLayout());
 		gridWrapper.add(grids, BorderLayout.NORTH);
@@ -89,9 +102,12 @@ class DeathbankPanel extends PluginPanel
 		footer.setBorder(BorderFactory.createEmptyBorder(12, 0, 0, 0));
 		footer.add(disclaimer);
 		footer.setAlignmentX(LEFT_ALIGNMENT);
+		footer.setMaximumSize(MAX_ROW);
 
 		header.setAlignmentX(LEFT_ALIGNMENT);
+		header.setMaximumSize(MAX_ROW);
 		gridWrapper.setAlignmentX(LEFT_ALIGNMENT);
+		gridWrapper.setMaximumSize(MAX_ROW);
 
 		add(header);
 		add(gridWrapper);
@@ -126,7 +142,8 @@ class DeathbankPanel extends PluginPanel
 
 		lootingBagGrid.removeAll();
 		lootingBagItems.forEach(item -> lootingBagGrid.add(buildItemCell(item)));
-		lootingBagHeading.setText(lootingBagItems.isEmpty() ? "" : wrapped("From your looting bag:"));
+		lootingBagHeading.setText("From your looting bag");
+		lootingBagSection.setVisible(!lootingBagItems.isEmpty());
 
 		itemGrid.revalidate();
 		itemGrid.repaint();
@@ -156,7 +173,7 @@ class DeathbankPanel extends PluginPanel
 	{
 		itemGrid.removeAll();
 		lootingBagGrid.removeAll();
-		lootingBagHeading.setText("");
+		lootingBagSection.setVisible(false);
 		itemGrid.revalidate();
 		itemGrid.repaint();
 		lootingBagGrid.revalidate();

@@ -52,7 +52,7 @@ public interface DeathbankUtilityConfig extends Config
 	@ConfigItem(
 		keyName = "highlightLootingBagItems",
 		name = "Mark looting bag items",
-		description = "Outline the items in the retrieval interface that came out of your looting bag",
+		description = "Mark the items in the retrieval interface that came out of your looting bag",
 		position = 4
 	)
 	default boolean highlightLootingBagItems()
@@ -69,7 +69,7 @@ public interface DeathbankUtilityConfig extends Config
 	)
 	default Color lootingBagColor()
 	{
-		return new Color(70, 180, 255, 220);
+		return new Color(235, 190, 80, 230);
 	}
 
 	@ConfigItem(

@@ -3,9 +3,12 @@ package com.deathbankutility;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
+import java.awt.image.BufferedImage;
 import javax.inject.Inject;
-import net.runelite.api.widgets.WidgetItem;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.ItemID;
+import net.runelite.api.widgets.WidgetItem;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.overlay.WidgetItemOverlay;
 
 /**
@@ -14,14 +17,18 @@ import net.runelite.client.ui.overlay.WidgetItemOverlay;
  */
 class DeathbankLootingBagOverlay extends WidgetItemOverlay
 {
+	private static final int BADGE_SIZE = 11;
+
 	private final DeathbankUtilityPlugin plugin;
 	private final DeathbankUtilityConfig config;
+	private final ItemManager itemManager;
 
 	@Inject
-	DeathbankLootingBagOverlay(DeathbankUtilityPlugin plugin, DeathbankUtilityConfig config)
+	DeathbankLootingBagOverlay(DeathbankUtilityPlugin plugin, DeathbankUtilityConfig config, ItemManager itemManager)
 	{
 		this.plugin = plugin;
 		this.config = config;
+		this.itemManager = itemManager;
 		showOnInterfaces(InterfaceID.GRAVESTONE_RETRIEVAL, InterfaceID.GRAVESTONE_GENERIC);
 	}
 
@@ -35,9 +42,17 @@ class DeathbankLootingBagOverlay extends WidgetItemOverlay
 
 		Color color = config.lootingBagColor();
 		Rectangle bounds = widgetItem.getCanvasBounds();
+
+		// A corner badge of the bag itself, so the marking says what it means rather
+		// than relying on the player remembering what the colour stands for
+		BufferedImage bagIcon = itemManager.getImage(ItemID.LOOTING_BAG);
+		if (bagIcon != null)
+		{
+			graphics.drawImage(bagIcon, bounds.x + bounds.width - BADGE_SIZE,
+				bounds.y + bounds.height - BADGE_SIZE, BADGE_SIZE, BADGE_SIZE, null);
+		}
+
 		graphics.setColor(color);
-		graphics.draw(bounds);
-		graphics.setColor(new Color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha() / 4));
-		graphics.fill(bounds);
+		graphics.drawRect(bounds.x, bounds.y, bounds.width, bounds.height);
 	}
 }
