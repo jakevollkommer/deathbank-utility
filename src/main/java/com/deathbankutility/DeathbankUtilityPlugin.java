@@ -356,7 +356,8 @@ public class DeathbankUtilityPlugin extends Plugin
 		if (confirmsBankExists)
 		{
 			// The message names where the items are, e.g. "...at the Theatre of Blood"
-			RetrievalService named = RetrievalService.fromName(message).orElse(state.getService());
+			RetrievalService named = RetrievalService.fromName(message)
+				.orElse(pendingDeathService != null ? pendingDeathService : state.getService());
 			log.debug("Retrieval service message: '{}' -> service {}", message, named);
 			markVerifiedActive(named, state.getWindowTitle());
 			return;
@@ -484,12 +485,10 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 
-		// Any unsafe death wipes whatever was already banked
-		if (state.isActive())
-		{
-			transitionTo(DeathbankState.inactive(Confidence.INFERRED));
-		}
-
+		// Dying is not proof of anything. A Theatre of Blood death only banks items on
+		// a full team wipe, Chambers is item safe, and Tombs returns items while
+		// attempts remain, so the death only arms a snapshot: the server's retrieval
+		// message decides whether a deathbank actually exists.
 		Optional<RetrievalService> service = RetrievalService.fromRegion(regionId);
 		if (service.isEmpty())
 		{
@@ -572,6 +571,19 @@ public class DeathbankUtilityPlugin extends Plugin
 		boolean respawned = pendingDeathTicks >= DEATH_RESOLVE_MIN_TICKS
 			&& client.getBoostedSkillLevel(Skill.HITPOINTS) > 0;
 		boolean timedOut = pendingDeathTicks >= DEATH_RESOLVE_TIMEOUT_TICKS;
+		boolean serverConfirmedTheBank = state.isActive();
+		if (!serverConfirmedTheBank)
+		{
+			// No retrieval message means the death did not bank anything, which is the
+			// normal outcome of a raid death that hands the items back
+			if (timedOut)
+			{
+				log.debug("Death at {} banked nothing: no retrieval message arrived",
+					pendingDeathService.getDisplayName());
+				clearPendingDeath();
+			}
+			return;
+		}
 		if (!respawned && !timedOut)
 		{
 			return;
@@ -605,10 +617,9 @@ public class DeathbankUtilityPlugin extends Plugin
 			// A message may already have confirmed the bank, and it names the service
 			// more precisely than the region can, so recording items must not downgrade
 			// what is already known
-			boolean alreadyConfirmed = state.isActive() && state.getConfidence() == Confidence.VERIFIED;
-			Confidence confidence = alreadyConfirmed ? Confidence.VERIFIED : Confidence.INFERRED;
-			RetrievalService labelled = alreadyConfirmed && state.getService() != null
-				? state.getService() : pendingDeathService;
+			// The bank is server confirmed by this point; only the item list is estimated
+			Confidence confidence = state.getConfidence();
+			RetrievalService labelled = state.getService() != null ? state.getService() : pendingDeathService;
 
 			log.debug("Death at {} estimated: ~{} stacks banked {}, labelled {} ({}), looting bag held {}",
 				pendingDeathService.getDisplayName(), banked.size(), describe(banked), labelled, confidence,
