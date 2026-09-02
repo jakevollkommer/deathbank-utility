@@ -181,7 +181,7 @@ class DeathbankPanel extends PluginPanel
 		statusLabel.setText("No active deathbank");
 		statusLabel.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
 		detailLabel.setText(wrapped("Die at content with an item retrieval service and it will show up here. "
-			+ "Raid deaths that hand your items back do not count."));
+			+ "Only a death that actually sends your items there counts."));
 		contentsLabel.setText("");
 		clearGrids();
 	}

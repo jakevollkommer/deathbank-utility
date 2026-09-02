@@ -485,10 +485,11 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 
-		// Dying is not proof of anything. A Theatre of Blood death only banks items on
-		// a full team wipe, Chambers is item safe, and Tombs returns items while
-		// attempts remain, so the death only arms a snapshot: the server's retrieval
-		// message decides whether a deathbank actually exists.
+		// Dying is not proof of anything. Plenty of content is item safe or hands the
+		// items back, and which content that is changes with the game, so the death only
+		// arms a snapshot and the server's retrieval message decides whether a deathbank
+		// exists. A Theatre of Blood death banking only on a full team wipe is one case
+		// of many, not the rule being handled.
 		Optional<RetrievalService> service = RetrievalService.fromRegion(regionId);
 		if (service.isEmpty())
 		{
