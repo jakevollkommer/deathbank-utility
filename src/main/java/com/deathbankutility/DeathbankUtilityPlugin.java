@@ -355,7 +355,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		boolean confirmsBankExists = message.contains(MSG_RETRIEVAL_SERVICE) || message.contains(MSG_RETRIEVED_SOME);
 		if (confirmsBankExists)
 		{
-			// The message names where the items are, e.g. "...at the Theatre of Blood"
+			// The message names where the items are
 			RetrievalService named = RetrievalService.fromName(message)
 				.orElse(pendingDeathService != null ? pendingDeathService : state.getService());
 			log.debug("Retrieval service message: '{}' -> service {}", message, named);
@@ -444,11 +444,10 @@ public class DeathbankUtilityPlugin extends Plugin
 	}
 
 	/**
-	 * Not every unsafe death banks items. A death inside the Theatre of Blood holds
-	 * them until the raid ends and hands them back, so the post-respawn diff can
-	 * infer a deathbank that never existed. Getting those exact items back in hand is
-	 * positive proof the inference was wrong, which is safe to act on, unlike the
-	 * absence of a signal.
+	 * Not every unsafe death banks items. Some content holds them and hands them back
+	 * later, so the post-respawn diff can infer a deathbank that never existed.
+	 * Getting those exact items back in hand is positive proof the inference was
+	 * wrong, which is safe to act on, unlike the absence of a signal.
 	 */
 	private void clearIfInferredItemsCameBack()
 	{
@@ -485,11 +484,10 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 
-		// Dying is not proof of anything. Plenty of content is item safe or hands the
-		// items back, and which content that is changes with the game, so the death only
-		// arms a snapshot and the server's retrieval message decides whether a deathbank
-		// exists. A Theatre of Blood death banking only on a full team wipe is one case
-		// of many, not the rule being handled.
+		// Dying is not proof of anything. Plenty of content is item safe, or holds the
+		// items and hands them back, and which content that is changes with the game.
+		// So the death only arms a snapshot, and the server's retrieval message decides
+		// whether a deathbank exists.
 		Optional<RetrievalService> service = RetrievalService.fromRegion(regionId);
 		if (service.isEmpty())
 		{
