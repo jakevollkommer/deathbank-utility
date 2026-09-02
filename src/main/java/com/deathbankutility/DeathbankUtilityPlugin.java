@@ -567,22 +567,26 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 		pendingDeathTicks++;
 
-		boolean respawned = pendingDeathTicks >= DEATH_RESOLVE_MIN_TICKS
-			&& client.getBoostedSkillLevel(Skill.HITPOINTS) > 0;
 		boolean timedOut = pendingDeathTicks >= DEATH_RESOLVE_TIMEOUT_TICKS;
 		boolean serverConfirmedTheBank = state.isActive();
-		if (!serverConfirmedTheBank)
+
+		// No retrieval message means the death did not bank anything, which is the
+		// normal outcome for content that hands the items back
+		boolean nothingWasBanked = !serverConfirmedTheBank && timedOut;
+		if (nothingWasBanked)
 		{
-			// No retrieval message means the death did not bank anything, which is the
-			// normal outcome of a raid death that hands the items back
-			if (timedOut)
-			{
-				log.debug("Death at {} banked nothing: no retrieval message arrived",
-					pendingDeathService.getDisplayName());
-				clearPendingDeath();
-			}
+			log.debug("Death at {} banked nothing: no retrieval message arrived",
+				pendingDeathService.getDisplayName());
+			clearPendingDeath();
 			return;
 		}
+		if (!serverConfirmedTheBank)
+		{
+			return;
+		}
+
+		boolean respawned = pendingDeathTicks >= DEATH_RESOLVE_MIN_TICKS
+			&& client.getBoostedSkillLevel(Skill.HITPOINTS) > 0;
 		if (!respawned && !timedOut)
 		{
 			return;
@@ -748,14 +752,21 @@ public class DeathbankUtilityPlugin extends Plugin
 		boolean windowSaysEmpty = stackCount.isPresent() && stackCount.getAsInt() == 0;
 		if (windowSaysEmpty)
 		{
-			if (state.isActive())
-			{
-				log.debug("Retrieval interface reports 0 stacks; clearing deathbank");
-				transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
-			}
+			clearBankShownEmpty("Retrieval interface reports 0 stacks");
 			return;
 		}
 		readRetrievalContainer();
+	}
+
+	/** The interface showing an empty bank is the one sighting that proves it is gone. */
+	private void clearBankShownEmpty(String reason)
+	{
+		if (!state.isActive())
+		{
+			return;
+		}
+		log.debug("{}; clearing deathbank", reason);
+		transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
 	}
 
 	private OptionalInt readWindowStackCount()
@@ -782,11 +793,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		List<DeathbankState.ItemStack> stacks = toItemStacks(items);
 		if (stacks.isEmpty())
 		{
-			if (state.isActive())
-			{
-				log.debug("Retrieval interface is empty; deathbank cleared");
-				transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
-			}
+			clearBankShownEmpty("Retrieval interface holds no items");
 			return;
 		}
 
@@ -890,19 +897,22 @@ public class DeathbankUtilityPlugin extends Plugin
 			Set<Integer> fromLootingBag = snapshot.getLootingBagItems().stream()
 				.map(DeathbankState.ItemStack::getId)
 				.collect(Collectors.toSet());
-			List<DeathbankPanel.PanelItem> items = new ArrayList<>();
-			List<DeathbankPanel.PanelItem> lootingBagItems = new ArrayList<>();
-			snapshot.getItems().forEach(stack ->
-			{
-				DeathbankPanel.PanelItem cell = new DeathbankPanel.PanelItem(
-					itemManager.getItemComposition(stack.getId()).getName(),
-					stack.getQuantity(),
-					itemManager.getImage(stack.getId(), stack.getQuantity(), stack.getQuantity() > 1));
-				(fromLootingBag.contains(stack.getId()) ? lootingBagItems : items).add(cell);
-			});
+			Map<Boolean, List<DeathbankPanel.PanelItem>> bySource = snapshot.getItems().stream()
+				.collect(Collectors.partitioningBy(stack -> fromLootingBag.contains(stack.getId()),
+					Collectors.mapping(this::toPanelItem, Collectors.toList())));
+			List<DeathbankPanel.PanelItem> items = bySource.get(false);
+			List<DeathbankPanel.PanelItem> lootingBagItems = bySource.get(true);
 			boolean awaitingConfirmation = isAwaitingLoginConfirmation();
 			SwingUtilities.invokeLater(() -> panel.update(snapshot, items, lootingBagItems, awaitingConfirmation));
 		});
+	}
+
+	private DeathbankPanel.PanelItem toPanelItem(DeathbankState.ItemStack stack)
+	{
+		return new DeathbankPanel.PanelItem(
+			itemManager.getItemComposition(stack.getId()).getName(),
+			stack.getQuantity(),
+			itemManager.getImage(stack.getId(), stack.getQuantity(), stack.getQuantity() > 1));
 	}
 
 	private static BufferedImage createPanelIcon()
@@ -958,12 +968,13 @@ public class DeathbankUtilityPlugin extends Plugin
 		try
 		{
 			DeathbankState.ItemStack[] saved = gson.fromJson(json, DeathbankState.ItemStack[].class);
-			if (saved != null)
+			if (saved == null)
 			{
-				lootingBagAtLastSight = Arrays.stream(saved)
-					.collect(Collectors.toMap(DeathbankState.ItemStack::getId, DeathbankState.ItemStack::getQuantity,
-						Integer::sum, HashMap::new));
+				return;
 			}
+			lootingBagAtLastSight = Arrays.stream(saved)
+				.collect(Collectors.toMap(DeathbankState.ItemStack::getId, DeathbankState.ItemStack::getQuantity,
+					Integer::sum, HashMap::new));
 		}
 		catch (JsonSyntaxException e)
 		{

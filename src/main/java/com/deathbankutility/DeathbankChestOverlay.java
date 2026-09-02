@@ -63,20 +63,12 @@ class DeathbankChestOverlay extends Overlay
 		RetrievalService service = plugin.getState().getService();
 		boolean locationUnknown = service == null;
 
-		plugin.getRetrievalObjects().forEach(object ->
-		{
-			if (locationUnknown || service.getClaimObjectIds().contains(object.getId()))
-			{
-				renderObject(graphics, object, outlineColor, labelColor);
-			}
-		});
-		plugin.getRetrievalNpcs().forEach(npc ->
-		{
-			if (locationUnknown || service.getClaimNpcIds().contains(npc.getId()))
-			{
-				renderNpc(graphics, npc, outlineColor, labelColor);
-			}
-		});
+		plugin.getRetrievalObjects().stream()
+			.filter(object -> locationUnknown || service.getClaimObjectIds().contains(object.getId()))
+			.forEach(object -> renderObject(graphics, object, outlineColor, labelColor));
+		plugin.getRetrievalNpcs().stream()
+			.filter(npc -> locationUnknown || service.getClaimNpcIds().contains(npc.getId()))
+			.forEach(npc -> renderNpc(graphics, npc, outlineColor, labelColor));
 		return null;
 	}
 
