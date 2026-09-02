@@ -132,6 +132,20 @@ budget test dummy for anything requiring a real death. Check items off per build
 - [ ] **F4 — Looting bag emptied by the death.** After dying, the looting bag is empty, so a second
       death with no re-fill marks nothing.
 
+## G0. Only the server creates a deathbank (regression guard)
+
+- [ ] **G0a — Raid death that banks nothing.** Die in the Theatre of Blood without
+      a team wipe, or in Chambers, or in Tombs with attempts remaining. No indicator,
+      no chest highlight, no damage warning: the retrieval message never arrives, so
+      no bank is recorded. The log says "banked nothing: no retrieval message arrived".
+- [ ] **G0b — Real bank still recorded.** Die somewhere that genuinely banks items.
+      The retrieval message creates the bank, and the item estimate fills in from the
+      death snapshot within a few ticks.
+- [ ] **G0c — A death no longer wipes state on its own.** With a bank active, die
+      somewhere that does not bank items. The bank must stay on screen: only the
+      server's "died again" message, an emptied retrieval interface, or login
+      reconciliation may clear it.
+
 ## G. Mistaken inference (Theatre of Blood)
 
 - [ ] **G1 — Individual ToB death does not leave a phantom bank.** Die inside ToB

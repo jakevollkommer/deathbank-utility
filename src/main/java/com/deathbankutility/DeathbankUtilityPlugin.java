@@ -355,8 +355,9 @@ public class DeathbankUtilityPlugin extends Plugin
 		boolean confirmsBankExists = message.contains(MSG_RETRIEVAL_SERVICE) || message.contains(MSG_RETRIEVED_SOME);
 		if (confirmsBankExists)
 		{
-			// The message names where the items are, e.g. "...at the Theatre of Blood"
-			RetrievalService named = RetrievalService.fromName(message).orElse(state.getService());
+			// The message names where the items are
+			RetrievalService named = RetrievalService.fromName(message)
+				.orElse(pendingDeathService != null ? pendingDeathService : state.getService());
 			log.debug("Retrieval service message: '{}' -> service {}", message, named);
 			markVerifiedActive(named, state.getWindowTitle());
 			return;
@@ -443,11 +444,10 @@ public class DeathbankUtilityPlugin extends Plugin
 	}
 
 	/**
-	 * Not every unsafe death banks items. A death inside the Theatre of Blood holds
-	 * them until the raid ends and hands them back, so the post-respawn diff can
-	 * infer a deathbank that never existed. Getting those exact items back in hand is
-	 * positive proof the inference was wrong, which is safe to act on, unlike the
-	 * absence of a signal.
+	 * Not every unsafe death banks items. Some content holds them and hands them back
+	 * later, so the post-respawn diff can infer a deathbank that never existed.
+	 * Getting those exact items back in hand is positive proof the inference was
+	 * wrong, which is safe to act on, unlike the absence of a signal.
 	 */
 	private void clearIfInferredItemsCameBack()
 	{
@@ -484,12 +484,10 @@ public class DeathbankUtilityPlugin extends Plugin
 			return;
 		}
 
-		// Any unsafe death wipes whatever was already banked
-		if (state.isActive())
-		{
-			transitionTo(DeathbankState.inactive(Confidence.INFERRED));
-		}
-
+		// Dying is not proof of anything. Plenty of content is item safe, or holds the
+		// items and hands them back, and which content that is changes with the game.
+		// So the death only arms a snapshot, and the server's retrieval message decides
+		// whether a deathbank exists.
 		Optional<RetrievalService> service = RetrievalService.fromRegion(regionId);
 		if (service.isEmpty())
 		{
@@ -569,9 +567,26 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 		pendingDeathTicks++;
 
+		boolean timedOut = pendingDeathTicks >= DEATH_RESOLVE_TIMEOUT_TICKS;
+		boolean serverConfirmedTheBank = state.isActive();
+
+		// No retrieval message means the death did not bank anything, which is the
+		// normal outcome for content that hands the items back
+		boolean nothingWasBanked = !serverConfirmedTheBank && timedOut;
+		if (nothingWasBanked)
+		{
+			log.debug("Death at {} banked nothing: no retrieval message arrived",
+				pendingDeathService.getDisplayName());
+			clearPendingDeath();
+			return;
+		}
+		if (!serverConfirmedTheBank)
+		{
+			return;
+		}
+
 		boolean respawned = pendingDeathTicks >= DEATH_RESOLVE_MIN_TICKS
 			&& client.getBoostedSkillLevel(Skill.HITPOINTS) > 0;
-		boolean timedOut = pendingDeathTicks >= DEATH_RESOLVE_TIMEOUT_TICKS;
 		if (!respawned && !timedOut)
 		{
 			return;
@@ -605,10 +620,9 @@ public class DeathbankUtilityPlugin extends Plugin
 			// A message may already have confirmed the bank, and it names the service
 			// more precisely than the region can, so recording items must not downgrade
 			// what is already known
-			boolean alreadyConfirmed = state.isActive() && state.getConfidence() == Confidence.VERIFIED;
-			Confidence confidence = alreadyConfirmed ? Confidence.VERIFIED : Confidence.INFERRED;
-			RetrievalService labelled = alreadyConfirmed && state.getService() != null
-				? state.getService() : pendingDeathService;
+			// The bank is server confirmed by this point; only the item list is estimated
+			Confidence confidence = state.getConfidence();
+			RetrievalService labelled = state.getService() != null ? state.getService() : pendingDeathService;
 
 			log.debug("Death at {} estimated: ~{} stacks banked {}, labelled {} ({}), looting bag held {}",
 				pendingDeathService.getDisplayName(), banked.size(), describe(banked), labelled, confidence,
@@ -738,14 +752,21 @@ public class DeathbankUtilityPlugin extends Plugin
 		boolean windowSaysEmpty = stackCount.isPresent() && stackCount.getAsInt() == 0;
 		if (windowSaysEmpty)
 		{
-			if (state.isActive())
-			{
-				log.debug("Retrieval interface reports 0 stacks; clearing deathbank");
-				transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
-			}
+			clearBankShownEmpty("Retrieval interface reports 0 stacks");
 			return;
 		}
 		readRetrievalContainer();
+	}
+
+	/** The interface showing an empty bank is the one sighting that proves it is gone. */
+	private void clearBankShownEmpty(String reason)
+	{
+		if (!state.isActive())
+		{
+			return;
+		}
+		log.debug("{}; clearing deathbank", reason);
+		transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
 	}
 
 	private OptionalInt readWindowStackCount()
@@ -772,11 +793,7 @@ public class DeathbankUtilityPlugin extends Plugin
 		List<DeathbankState.ItemStack> stacks = toItemStacks(items);
 		if (stacks.isEmpty())
 		{
-			if (state.isActive())
-			{
-				log.debug("Retrieval interface is empty; deathbank cleared");
-				transitionTo(DeathbankState.inactive(Confidence.VERIFIED));
-			}
+			clearBankShownEmpty("Retrieval interface holds no items");
 			return;
 		}
 
@@ -880,19 +897,22 @@ public class DeathbankUtilityPlugin extends Plugin
 			Set<Integer> fromLootingBag = snapshot.getLootingBagItems().stream()
 				.map(DeathbankState.ItemStack::getId)
 				.collect(Collectors.toSet());
-			List<DeathbankPanel.PanelItem> items = new ArrayList<>();
-			List<DeathbankPanel.PanelItem> lootingBagItems = new ArrayList<>();
-			snapshot.getItems().forEach(stack ->
-			{
-				DeathbankPanel.PanelItem cell = new DeathbankPanel.PanelItem(
-					itemManager.getItemComposition(stack.getId()).getName(),
-					stack.getQuantity(),
-					itemManager.getImage(stack.getId(), stack.getQuantity(), stack.getQuantity() > 1));
-				(fromLootingBag.contains(stack.getId()) ? lootingBagItems : items).add(cell);
-			});
+			Map<Boolean, List<DeathbankPanel.PanelItem>> bySource = snapshot.getItems().stream()
+				.collect(Collectors.partitioningBy(stack -> fromLootingBag.contains(stack.getId()),
+					Collectors.mapping(this::toPanelItem, Collectors.toList())));
+			List<DeathbankPanel.PanelItem> items = bySource.get(false);
+			List<DeathbankPanel.PanelItem> lootingBagItems = bySource.get(true);
 			boolean awaitingConfirmation = isAwaitingLoginConfirmation();
 			SwingUtilities.invokeLater(() -> panel.update(snapshot, items, lootingBagItems, awaitingConfirmation));
 		});
+	}
+
+	private DeathbankPanel.PanelItem toPanelItem(DeathbankState.ItemStack stack)
+	{
+		return new DeathbankPanel.PanelItem(
+			itemManager.getItemComposition(stack.getId()).getName(),
+			stack.getQuantity(),
+			itemManager.getImage(stack.getId(), stack.getQuantity(), stack.getQuantity() > 1));
 	}
 
 	private static BufferedImage createPanelIcon()
@@ -948,12 +968,13 @@ public class DeathbankUtilityPlugin extends Plugin
 		try
 		{
 			DeathbankState.ItemStack[] saved = gson.fromJson(json, DeathbankState.ItemStack[].class);
-			if (saved != null)
+			if (saved == null)
 			{
-				lootingBagAtLastSight = Arrays.stream(saved)
-					.collect(Collectors.toMap(DeathbankState.ItemStack::getId, DeathbankState.ItemStack::getQuantity,
-						Integer::sum, HashMap::new));
+				return;
 			}
+			lootingBagAtLastSight = Arrays.stream(saved)
+				.collect(Collectors.toMap(DeathbankState.ItemStack::getId, DeathbankState.ItemStack::getQuantity,
+					Integer::sum, HashMap::new));
 		}
 		catch (JsonSyntaxException e)
 		{
