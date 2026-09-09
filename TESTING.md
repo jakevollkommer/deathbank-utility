@@ -132,6 +132,16 @@ budget test dummy for anything requiring a real death. Check items off per build
 - [ ] **F4 — Looting bag emptied by the death.** After dying, the looting bag is empty, so a second
       death with no re-fill marks nothing.
 
+## H. Consumed items must not be reported as banked
+
+- [ ] **H1 — Drink on the tick you die.** Spam a Saradomin brew as you die at content
+      with a retrieval service. The dose you drank must NOT appear in the estimate:
+      doses change item id, and the snapshot is a tick old, so a part used brew used to
+      read as a whole one being banked. Compare the estimate against the chest.
+- [ ] **H2 — Eaten food.** Food eaten on the death tick disappears entirely rather than
+      changing id, so it can still be over reported. Note whether it shows up, since
+      variation matching cannot cover that case.
+
 ## G0. Only the server creates a deathbank (regression guard)
 
 - [ ] **G0a — Raid death that banks nothing.** Die in the Theatre of Blood without

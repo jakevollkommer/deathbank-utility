@@ -56,6 +56,7 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.game.ItemManager;
+import net.runelite.client.game.ItemVariationMapping;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
@@ -495,7 +496,11 @@ public class DeathbankUtilityPlugin extends Plugin
 		}
 
 		pendingDeathService = service.get();
-		pendingDeathSnapshot = carriedLastTick.isEmpty() ? countCarriedItems() : carriedLastTick;
+		// The live reading is the most accurate, but the server sometimes empties the
+		// inventory before ActorDeath arrives, in which case the previous tick is the
+		// last honest one
+		Map<Integer, Integer> carriedNow = countCarriedItems();
+		pendingDeathSnapshot = carriedNow.isEmpty() ? carriedLastTick : carriedNow;
 		pendingDeathLootingBagItems = toItemStacks(lootingBagAtLastSight);
 		lootingBagAtLastSight = Map.of();
 		pendingDeathTicks = 0;
@@ -602,14 +607,18 @@ public class DeathbankUtilityPlugin extends Plugin
 	 */
 	private void resolvePendingDeath(boolean finalPass)
 	{
-		Map<Integer, Integer> lost = new HashMap<>(pendingDeathSnapshot);
-		countCarriedItems().forEach((id, stillHeld) -> lost.merge(id, -stillHeld, Integer::sum));
+		// Doses and charges change an item's id, so drinking a brew on the tick you die
+		// would otherwise read as that dose being banked. Comparing by variation keeps
+		// a part used item matched against the one that was carried.
+		Map<Integer, Integer> heldBefore = countByVariation(pendingDeathSnapshot);
+		Map<Integer, Integer> heldAfter = countByVariation(countCarriedItems());
 
-		List<DeathbankState.ItemStack> banked = lost.entrySet().stream()
-			.filter(entry -> entry.getValue() > 0)
+		List<DeathbankState.ItemStack> banked = heldBefore.entrySet().stream()
+			.filter(entry -> entry.getValue() > heldAfter.getOrDefault(entry.getKey(), 0))
 			// The bag is destroyed and its contents deposited in its place
-			.filter(entry -> !LOOTING_BAG_IDS.contains(entry.getKey()))
-			.map(entry -> new DeathbankState.ItemStack(entry.getKey(), entry.getValue()))
+			.filter(entry -> !LOOTING_BAG_IDS.contains(carriedIdFor(entry.getKey())))
+			.map(entry -> new DeathbankState.ItemStack(carriedIdFor(entry.getKey()),
+				entry.getValue() - heldAfter.getOrDefault(entry.getKey(), 0)))
 			.collect(Collectors.toCollection(ArrayList::new));
 		banked.addAll(pendingDeathLootingBagItems);
 		banked.sort(Comparator.comparingInt(DeathbankState.ItemStack::getId));
@@ -1013,6 +1022,23 @@ public class DeathbankUtilityPlugin extends Plugin
 			.map(client::getItemContainer)
 			.filter(Objects::nonNull)
 			.flatMap(container -> Arrays.stream(container.getItems())));
+	}
+
+	private static Map<Integer, Integer> countByVariation(Map<Integer, Integer> countedByItemId)
+	{
+		Map<Integer, Integer> byVariation = new HashMap<>();
+		countedByItemId.forEach((itemId, quantity) ->
+			byVariation.merge(ItemVariationMapping.map(itemId), quantity, Integer::sum));
+		return byVariation;
+	}
+
+	/** The id actually carried for a variation, so the estimate shows the real dose. */
+	private int carriedIdFor(int variationId)
+	{
+		return pendingDeathSnapshot.keySet().stream()
+			.filter(itemId -> ItemVariationMapping.map(itemId) == variationId)
+			.findFirst()
+			.orElse(variationId);
 	}
 
 	private static Map<Integer, Integer> countItems(Stream<Item> items)
